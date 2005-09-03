@@ -299,7 +299,7 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(const char *k, bool noramdisk, cons
 	}
 
 	/* The ffs2 rootfs is optional */
-	if (rootfs != 0) {
+	if (root != 0) {
 		rootfs.open(root, std::ios::in | std::ios::binary);
 		if (!rootfs.good())
 			throw FileError(OpenError, root, errno);

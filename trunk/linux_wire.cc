@@ -4,6 +4,9 @@
  * Implementation of Wire for linux, may work on other UN*X systems
  * too...
  */
+#include "config.h"
+
+#if !HAVE_LIBPCAP
 #include <cstring>
 
 #include <sys/types.h>
@@ -241,3 +244,4 @@ NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
 	/* This is enough to make a new wire. */
 	return new EthernetWire(packet_socket, device_interface.ifr_ifindex, address);
 }
+#endif
