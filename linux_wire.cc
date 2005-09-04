@@ -14,18 +14,12 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/select.h>
-#include <net/ethernet.h>
 
-#if 0
-/* Including this is incompatible with including linux/if_arp.h */
+#include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_arp.h>
+
 #include <netpacket/packet.h>
-#else
-#include <asm/types.h>
-#include <linux/if_packet.h>
-#include <linux/if_ether.h>
-#include <linux/if_arp.h>
-#endif
 
 #include <unistd.h>
 #include <sys/types.h>   /* Required for class EUID */
