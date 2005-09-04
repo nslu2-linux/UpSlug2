@@ -8,6 +8,7 @@
 #if HAVE_LIBPCAP
 #include <cstring>
 #include <stdexcept>
+#include <cerrno>
 
 #if BROKEN_PCAP_TIMEOUT
 #	include <sys/socket.h>
@@ -22,7 +23,7 @@
 #include <net/if.h>
 
 #include <unistd.h>
-#include <errno.h>
+#include <sys/types.h>  /* Required for class EUID */
 
 #include <pcap.h>
 
@@ -246,17 +247,17 @@ namespace NSLU2Upgrade {
 	/* Class to set and reset the user id to the effective uid. */
 	class EUID {
 	public:
-		EUID(int uid) : euid(geteuid()) {
-			if (uid != -1 && seteuid(uid) != 0)
+		EUID(int uid) : euid(::geteuid()) {
+			if (uid != -1 && ::seteuid(uid) != 0)
 				throw WireError(errno);
 		}
 
 		~EUID() {
-			seteuid(euid);
+			::seteuid(euid);
 		}
 
 	private:
-		uid_t euid;
+		::uid_t euid;
 	};
 
 };
