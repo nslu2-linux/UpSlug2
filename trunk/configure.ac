@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT(upslug2, 2, http://sourceforge.net/projects/nslu/)
+AC_INIT(upslug2, 3, http://sourceforge.net/projects/nslu/)
 AM_INIT_AUTOMAKE
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADER([config.h])
