@@ -8,6 +8,7 @@
 
 #if !HAVE_LIBPCAP
 #include <cstring>
+#include <cerrno>
 
 #include <sys/types.h>
 #include <sys/ioctl.h>
@@ -27,7 +28,7 @@
 #endif
 
 #include <unistd.h>
-#include <errno.h>
+#include <sys/types.h>   /* Required for class EUID */
 
 #include "nslu2_upgrade.h"
 
@@ -155,19 +156,20 @@ namespace NSLU2Upgrade {
 	};
 
 	/* Class to set and reset the user id to the effective uid. */
+	/* Requires unistd.h and sys/types.h */
 	class EUID {
 	public:
-		EUID(int uid) : euid(geteuid()) {
-			if (uid != -1 && seteuid(uid) != 0)
+		EUID(int uid) : euid(::geteuid()) {
+			if (uid != -1 && ::seteuid(uid) != 0)
 				throw WireError(errno);
 		}
 
 		~EUID() {
-			seteuid(euid);
+			::seteuid(euid);
 		}
 
 	private:
-		uid_t euid;
+		::uid_t euid;
 	};
 
 };

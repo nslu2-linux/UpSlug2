@@ -3,13 +3,14 @@
  *
  * The upslug2 main program for the command line implementation.
  */
-#include <sys/types.h>
-#include <unistd.h>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
 
-#include <getopt.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
+#include <unistd.h>
+#include <sys/types.h>   /* For getuid/euid */
+
+#include <getopt.h>      /* For getopt */
 
 #include "nslu2_upgrade.h"
 #include "nslu2_image.h"
@@ -27,7 +28,7 @@ public:
 	}
 
 	inline void FirstDisplay(void) {
-		fprintf(stderr,
+		std::fprintf(stderr,
 			"Upgrading LKG%2.2X%2.2X%2.2X %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n"
 			"    %c original flash contents  %c packet timed out\n"
 			"    %c being erased             %c erased\n"
@@ -53,7 +54,7 @@ public:
 	inline void EndDisplay(void) {
 		if (displayed) {
 			displayed = false;
-			fprintf(stderr, "\n");
+			std::fprintf(stderr, "\n");
 		}
 	}
 
@@ -76,9 +77,9 @@ private:
 		} else
 			sent -= seen;
 		displayed = true;
-		fprintf(stderr, "\r%c %6x+%6.6x %s",
+		std::fprintf(stderr, "\r%c %6x+%6.6x %s",
 			timeout ? '*' : (retransmit ? '+' : ' '), seen, sent, display);
-		fflush(stderr);
+		std::fflush(stderr);
 	}
 
 	bool                 displayed;
@@ -149,20 +150,20 @@ void Upgrade(NSLU2Upgrade::DoUpgrade *upgrade, NSLU2Image::Image *image,
 void Reboot(NSLU2Upgrade::DoUpgrade *upgrade, bool no_reboot) {
 	if (!no_reboot) {
 		/* Reboot the NSLU2 */
-		fprintf(stderr, "Rebooting...");
-		fflush(stderr);
+		std::fprintf(stderr, "Rebooting...");
+		std::fflush(stderr);
 		upgrade->Reboot();
-		fprintf(stderr, " done\n");
+		std::fprintf(stderr, " done\n");
 	}
 }
 
 void help(struct option *options) {
-	fprintf(stderr, "upslug2: usage: upslug2 {options}\n options:\n");
+	std::fprintf(stderr, "upslug2: usage: upslug2 {options}\n options:\n");
 	while (options->name) {
-		fprintf(stderr, "  -%c --%s\n", options->val, options->name);
+		std::fprintf(stderr, "  -%c --%s\n", options->val, options->name);
 		++options;
 	}
-	fprintf(stderr, "\n"
+	std::fprintf(stderr, "\n"
 " Specify --target to upgrade an NSLU2 (or to verify a previous upgrade)\n"
 " without --target upslug2 will list the NSLU2 machines which are currently\n"
 " in upgrade mode (and do nothing else)."
@@ -175,7 +176,7 @@ void help(struct option *options) {
 " Alternatively specify --kernel and --rootfs to build the image which will be\n"
 " used to upgrade the NSLU2.  In this case --product-id, --protocol-id and\n"
 " --firmware-version should be specified to set these fields in the flash image.\n");
-	exit(1);
+	std::exit(1);
 }
 
 unsigned char readhex(const char *arg, const char *p) {
@@ -197,11 +198,11 @@ unsigned char readhex(const char *arg, const char *p) {
 	case 'E': case 'e': return 0xE;
 	case 'F': case 'f': return 0xF;
 	case 0:
-		fprintf(stderr, "%s: argument too short (expected hex digit)\n", arg);
-		exit(1);
+		std::fprintf(stderr, "%s: argument too short (expected hex digit)\n", arg);
+		std::exit(1);
 	default:
-		fprintf(stderr, "%s: invalid hex digit %c in number\n", arg, *p);
-		exit(1);
+		std::fprintf(stderr, "%s: invalid hex digit %c in number\n", arg, *p);
+		std::exit(1);
 	}
 }
 
@@ -232,13 +233,13 @@ void parse_mac(unsigned char macBuffer[6], const char *arg) {
 			if (++i == 6)
 				break;
 			if (*ap++ != ':') {
-				fprintf(stderr, "%s: invalid MAC address\n", arg);
-				exit(1);
+				std::fprintf(stderr, "%s: invalid MAC address\n", arg);
+				std::exit(1);
 			}
 		} while (1);
 		if (*ap) {
-			fprintf(stderr, "%s: invalid MAC address (too long)\n", arg);
-			exit(1);
+			std::fprintf(stderr, "%s: invalid MAC address (too long)\n", arg);
+			std::exit(1);
 		}
 	}
 }
@@ -248,14 +249,14 @@ void parse_mac(unsigned char macBuffer[6], const char *arg) {
  */
 unsigned short parse_number(const char *arg) {
 	char *endp;
-	unsigned long int n(strtoul(arg, &endp, 0));
+	unsigned long int n(std::strtoul(arg, &endp, 0));
 	if (endp == arg || *endp != 0) {
-		fprintf(stderr, "%s: not a valid number\n", arg);
-		exit(1);
+		std::fprintf(stderr, "%s: not a valid number\n", arg);
+		std::exit(1);
 	}
 	if (n > 0xffff) {
-		fprintf(stderr, "%s: number too large\n", arg);
-		exit(1);
+		std::fprintf(stderr, "%s: number too large\n", arg);
+		std::exit(1);
 	}
 	return n;
 }
@@ -264,8 +265,8 @@ int main(int argc, char **argv) {
 	/* The effective uid is stored for later use and reset for the moment
 	 * to the real user id.
 	 */
-	uid_t euid(geteuid());
-	seteuid(getuid());
+	uid_t euid(::geteuid());
+	::seteuid(::getuid());
 
 	bool                reprogram(false);     /* Reprogram the whole flash. */
 	bool                no_upgrade(false);    /* Do not upgrade, just verify */
@@ -316,13 +317,13 @@ int main(int argc, char **argv) {
 
 	do switch (getopt_long(argc, argv, "hld:t:vUni:Ck:r:R:j:p:P:T:F:E:", options, 0)) {
 	case  -1: if (optind < argc) {
-			  fprintf(stderr, "%s: unrecognised option\n", argv[optind]);
-			  exit(1);
+			  std::fprintf(stderr, "%s: unrecognised option\n", argv[optind]);
+			  std::exit(1);
 		  }
 		  goto done;
 	case ':':
-	case '?': exit(1);
-	case 'h': help(options); exit(1);
+	case '?': std::exit(1);
+	case 'h': help(options); std::exit(1);
 	case 'd': device = optarg; break;
 	case 't': target = optarg; parse_mac(macBuffer, target); mac = macBuffer; break;
 	case 'v': no_verify = false; no_upgrade = true; break;
@@ -343,8 +344,8 @@ int main(int argc, char **argv) {
 done:
 	if (reprogram) {
 		/* IF you want to test this remove these lines, at your own risk. */
-		fprintf(stderr, "--Complete-reprogram: this option is disabled\n");
-		exit(1);
+		std::fprintf(stderr, "--Complete-reprogram: this option is disabled\n");
+		std::exit(1);
 	}
 
 	try {
@@ -400,7 +401,7 @@ done:
 				/* I find stdio easier to use that cout, so... */
 				if (address[0] == 0x00 && address[1] == 0x0f &&
 						address[2] == 0x66) {
-					printf(
+					std::printf(
 		"LKG%2.2X%2.2X%2.2X %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x Product ID: %d Protocol ID:%d Firmware Version: R%2.2XV%2.2X [0x%4.4X]\n",
 		address[3], address[4], address[5],
 		address[0], address[1], address[2], address[3], address[4], address[5],
@@ -411,7 +412,7 @@ done:
 					/* the ethernet doesn't conform to the
 					 * expected sequence of numbers.
 					 */
-					printf(
+					std::printf(
 		"not-NSLU2 %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x Product ID: %d Protocol ID: %d Firmware Version: R%2.2XV%2.2X [0x%4.4X]\n",
 		address[0], address[1], address[2], address[3], address[4], address[5],
 		product_id, protocol_id, firmware_version >> 8, firmware_version & 0xff,
@@ -420,79 +421,79 @@ done:
 			}
 
 			if (!found_one)
-				printf("[no NSLU2 machines found in upgrade mode]\n");
+				std::printf("[no NSLU2 machines found in upgrade mode]\n");
 		}
 	} catch (NSLU2Upgrade::FlashError e) {
 		switch (e.returnCode) {
 		case NSLU2Protocol::ProtocolError:
-			fprintf(stderr,
+			std::fprintf(stderr,
 				"%s: upgrade protocol error [%s]\n", target, e.what());
-			fprintf(stderr,
+			std::fprintf(stderr,
 				" Either this is a bug in upslug2 or the upgrade failed because\n"
 				" because the start packet was lost, in the latter case it is\n"
 				" sufficient to simply restart the upgrade.\n");
 			break;
 		case NSLU2Protocol::ProgramError:
-			fprintf(stderr,
+			std::fprintf(stderr,
 				"%s: flash programming error [%s]\n", target, e.what());
-			fprintf(stderr,
+			std::fprintf(stderr,
 				" The NSLU2 reported an error reprogramming the flash, this is\n"
 				" potentially a serious hardware problem, however it is probably\n"
 				" worth while retrying the upgrade to see if the problem is\n"
 				" temporary.\n");
 			break;
 		case NSLU2Protocol::VerifyError:
-			fprintf(stderr,
+			std::fprintf(stderr,
 				"%s: flash verification error (address 0x%X, length %d) [%s]\n",
 				target, e.address, e.length, e.what());
-			fprintf(stderr,
+			std::fprintf(stderr,
 				" The verification step failed, the flash has not been written\n"
 				" correctly (or maybe there is a bug in upslug2).  Try repeating\n"
 				" the verification step and, if that fails for the same reason,\n"
 				" try repeating the whole upgrade.\n");
 			break;
 		default:
-			fprintf(stderr,
+			std::fprintf(stderr,
 				"FlashError(%d): internal programming error (bad return code)\n",
 				e.returnCode);
 			break;
 		}
-		exit(3);
+		std::exit(3);
 	} catch (NSLU2Upgrade::SequenceError e) {
-		fprintf(stderr,
+		std::fprintf(stderr,
 			"%s: upgrade packet out of sequence [%8.8x<=xxxx%4.4x<=%8.8x] [%s]\n",
 			target, e.lastSeen, e.sequenceError, e.lastSent, e.what());
-		exit(1);
+		std::exit(1);
 	} catch (NSLU2Upgrade::AddressError e) {
-		fprintf(stderr,
+		std::fprintf(stderr,
 			"%s: flash address invalid [0x%6.6x,0x%x] [%s]\n",
 			target, e.address, e.length, e.what());
-		exit(1);
+		std::exit(1);
 	} catch (NSLU2Image::FileError e) {
-		fprintf(stderr, "%s: %s: %s [%s]\n", e.str, FileErrorStr(e.type),
-				e.errval ? strerror(e.errval) : "fatal error", e.what());
-		exit(1);
+		std::fprintf(stderr, "%s: %s: %s [%s]\n", e.str, FileErrorStr(e.type),
+				e.errval ? std::strerror(e.errval) : "fatal error", e.what());
+		std::exit(1);
 	} catch (NSLU2Upgrade::WireError e) {
-		fprintf(stderr, "%s: %s: error using device [%s]\n",
-				device, strerror(e.errval), e.what());
-		exit(1);
+		std::fprintf(stderr, "%s: %s: error using device [%s]\n",
+				device, std::strerror(e.errval), e.what());
+		std::exit(1);
 	} catch (NSLU2Upgrade::SendError e) {
-		fprintf(stderr, "%s: %s: transmit error [%s]\n",
-				target, strerror(e.errval), e.what());
-		exit(1);
+		std::fprintf(stderr, "%s: %s: transmit error [%s]\n",
+				target, std::strerror(e.errval), e.what());
+		std::exit(1);
 	} catch (NSLU2Upgrade::ReceiveError e) {
-		fprintf(stderr, "%s: %s: receive error [%s]\n",
-				target, strerror(e.errval), e.what());
-		exit(1);
+		std::fprintf(stderr, "%s: %s: receive error [%s]\n",
+				target, std::strerror(e.errval), e.what());
+		std::exit(1);
 	} catch (NSLU2Upgrade::OSError e) {
-		fprintf(stderr, "%s,%s: %s: system error [%s]\n",
-				device, target, strerror(e.errval), e.what());
-		exit(1);
+		std::fprintf(stderr, "%s,%s: %s: system error [%s]\n",
+				device, target, std::strerror(e.errval), e.what());
+		std::exit(1);
 	} catch (std::logic_error e) {
-		fprintf(stderr, "internal error (bug) [%s]\n", e.what());
-		exit(1);
+		std::fprintf(stderr, "internal error (bug) [%s]\n", e.what());
+		std::exit(1);
 	} catch (std::exception e) {
-		fprintf(stderr, "internal error [%s]\n", e.what());
+		std::fprintf(stderr, "internal error [%s]\n", e.what());
 		throw e;
 	}
 

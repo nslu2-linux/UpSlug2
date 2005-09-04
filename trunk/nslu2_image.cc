@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <fstream>
+#include <cerrno>
 
 #include "nslu2_image.h"
 
