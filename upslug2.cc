@@ -210,21 +210,12 @@ unsigned char readbyte(const char *arg, const char *p) {
 	return (readhex(arg, p) << 4) + readhex(arg, p+1);
 }
 
-/* Read a complete MAC address, either as an NSLU2 serial number
- * or as a : separated 6 byte address.
+/* Read a complete MAC address, either as an NSLU2 serial number;
+ * a : separated 6 byte address.
  */
 void parse_mac(unsigned char macBuffer[6], const char *arg) {
-	/* The argument can either be LKGxxxxxx or xx:xx:xx:xx:xx:xx */
-	if (    (arg[0] == 'L' || arg[0] == 'l') &&
-		(arg[1] == 'K' || arg[1] == 'k') &&
-		(arg[2] == 'G' || arg[2] == 'g') ) {
-		macBuffer[0] = 0x00;
-		macBuffer[1] = 0x0f;
-		macBuffer[2] = 0x66;
-		macBuffer[3] = readbyte(arg, arg+3);
-		macBuffer[4] = readbyte(arg, arg+5);
-		macBuffer[5] = readbyte(arg, arg+7);
-	} else {
+	/* The argument must be xx:xx:xx:xx:xx:xx */
+	{
 		int i(0);
 		const char *ap = arg;
 		do {
