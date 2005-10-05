@@ -84,7 +84,7 @@ namespace NSLU2Image {
 
 	class SynthesiseImage : public Image {
 	public:
-		SynthesiseImage(const char *k, bool noramdisk, const char *ram,
+		SynthesiseImage(bool le, const char *k, bool noramdisk, const char *ram,
 			const char *root, const char *f,
 			unsigned short product_id, unsigned short protocol_id,
 			unsigned short firmware_version, unsigned short extra_version);
@@ -124,18 +124,42 @@ namespace NSLU2Image {
 		} FlashType;
 
 		/* Write a 32 bit big endian value */
-		inline void Write32(char *p, unsigned long v) {
+		inline void Write32BE(char *p, unsigned long v) {
 			*p++ = v >> 24;
 			*p++ = v >> 16;
 			*p++ = v >>  8;
 			*p++ = v;
 		}
 
-		inline unsigned long Read32(char *p) {
+		/* Write a 32 bit little endian value */
+		inline void Write32LE(char *p, unsigned long v) {
+			*p++ = v;
+			*p++ = v >>  8;
+			*p++ = v >> 16;
+			*p++ = v >> 24;
+		}
+
+		/* Write a 32 bit image-endian value. */
+		inline void Write32IE(char *p, unsigned long v) {
+			if (little_endian)
+				Write32LE(p, v);
+			else
+				Write32BE(p, v);
+		}
+
+
+		inline unsigned long Read32BE(const char *p) {
 			return  ((0xff & p[0]) << 24) +
 				((0xff & p[1]) << 16) +
 				((0xff & p[2]) <<  8) +
 				((0xff & p[3])      );
+		}
+
+		inline unsigned long Read32LE(const char *p) {
+			return  ((0xff & p[3]) << 24) +
+				((0xff & p[2]) << 16) +
+				((0xff & p[1]) <<  8) +
+				((0xff & p[0])      );
 		}
 
 		/* Make a new entry - this must be called in order because it
@@ -158,11 +182,11 @@ namespace NSLU2Image {
 			std::strcpy(b+ 0, name);
 
 			flash_address = (flash_address + 0x1ffff) & ~0x1ffff;
-			Write32(b+16, 0x50000000 | flash_address);
+			Write32IE(b+16, 0x50000000 | flash_address);
 			/* b+20: Do not set memory address */
-			Write32(b+24, size != 0 ? size : (length+0x1ffff) & ~0x1ffff);
+			Write32IE(b+24, size != 0 ? size : (length+0x1ffff) & ~0x1ffff);
 			/* b+28: Do not set entry point */
-			Write32(b+32, length);
+			Write32IE(b+32, length);
 			return b;
 		}
 
@@ -173,6 +197,7 @@ namespace NSLU2Image {
 		int      segment_count;  /* Count of Segment entries used */
 		int      buffer_pointer; /* Index of next free slot in buffer */
 		int      flash_address;  /* Current flash address */
+		bool     little_endian;  /* Build a little endian image */
 		/* The flash partitions have a data header then data from a file,
 		 * represent this as an array of Segment entries, up to 2x5 for
 		 * the actual partitions, 6 FIS entries (all data), a payload and
@@ -182,6 +207,7 @@ namespace NSLU2Image {
 		struct Segment {
 			int            address;
 			int            length;
+			bool           swap;
 			const char*    data;
 			std::ifstream* file;
 		}         segments[32];
@@ -210,6 +236,7 @@ NSLU2Image::Image *NSLU2Image::Image::MakeImage(bool reprogram, const char *imag
 }
 
 /*-
+ * le               - build a little-endian image
  * k(kernel)        - file containing a kernel image
  * nr(noramdisk)    - causes the image to contain a zero length ramdisk
  * ram(ramdisk)     - the ramdisk image (if nr this is just a payload)
@@ -219,11 +246,12 @@ NSLU2Image::Image *NSLU2Image::Image::MakeImage(bool reprogram, const char *imag
  * Synthesises an image and writes this to flash (never overwrites the
  * boot loader).
  */
-NSLU2Image::SynthesiseImage::SynthesiseImage(const char *k, bool noramdisk, const char *ram,
+NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
+		const char *k, bool noramdisk, const char *ram,
 		const char *root, const char *f, unsigned short product_id,
 		unsigned short protocol_id, unsigned short firmware_version,
 		unsigned short extra_version) :
-	segment_count(0), buffer_pointer(0), flash_address(0) {
+	little_endian(le), segment_count(0), buffer_pointer(0), flash_address(0) {
 	const char *fis[8];
 	/* Use open to open the files, not the constructor, because the arguments
 	 * may be null, this also means that the ifstream can be used to determine
@@ -252,15 +280,17 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(const char *k, bool noramdisk, cons
 		if (s+16 > 0x100000)
 			throw FileError(SizeError, k, 0);
 		fis[fis_count++] = MakeFISEntry("Kernel", 0x100000, 16+s);
-		Write32(buffer+buffer_pointer, s);
+		Write32BE(buffer+buffer_pointer, s);
 		segments[segment_count].address = flash_address;
 		segments[segment_count].length = 4;
+		segments[segment_count].swap = false;
 		segments[segment_count].data = buffer+buffer_pointer;
 		segments[segment_count++].file = 0;
 		buffer_pointer += 4;
 		if (s > 0) {
 			segments[segment_count].address = flash_address+16;
 			segments[segment_count].length = s;
+			segments[segment_count].swap = little_endian;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &kernel;
 		}
@@ -283,9 +313,10 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(const char *k, bool noramdisk, cons
 				throw FileError(SizeError, ram, 0);
 		}
 		fis[fis_count++] = MakeFISEntry("Ramdisk", 0/*calculate*/, s+16);
-		Write32(buffer+buffer_pointer, noramdisk ? 0 : s);
+		Write32BE(buffer+buffer_pointer, noramdisk ? 0 : s);
 		segments[segment_count].address = flash_address;
 		segments[segment_count].length = 4;
+		segments[segment_count].swap = false;
 		segments[segment_count].data = buffer+buffer_pointer;
 		segments[segment_count++].file = 0;
 		buffer_pointer += 4;
@@ -293,6 +324,7 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(const char *k, bool noramdisk, cons
 		if (s > 0) {
 			segments[segment_count].address = flash_address;
 			segments[segment_count].length = s;
+			segments[segment_count].swap = little_endian;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &ramdisk;
 			flash_address += s;
@@ -321,6 +353,7 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(const char *k, bool noramdisk, cons
 		if (s > 0) {
 			segments[segment_count].address = flash_address;
 			segments[segment_count].length = s;
+			segments[segment_count].swap = little_endian;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &rootfs;
 			flash_address += s;
@@ -333,6 +366,7 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(const char *k, bool noramdisk, cons
 	for (int i(0); i<=fis_count; ++i) {
 		segments[segment_count].address = flash_address;
 		segments[segment_count].length = 36;
+		segments[segment_count].swap = little_endian;
 		segments[segment_count].data = fis[i];
 		segments[segment_count++].file = 0;
 		flash_address += 256;
@@ -357,19 +391,21 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(const char *k, bool noramdisk, cons
 		/* The header is written even for a zero length payload. */
 		segments[segment_count].address = flash_address;
 		segments[segment_count].length = 8;
+		segments[segment_count].swap = false;
 		segments[segment_count].data = buffer+buffer_pointer;
 		segments[segment_count++].file = 0;
 		buffer[buffer_pointer++] = 255;
 		buffer[buffer_pointer++] = 'd';
 		buffer[buffer_pointer++] = 'a';
 		buffer[buffer_pointer++] = 't';
-		Write32(buffer+buffer_pointer, s);
+		Write32BE(buffer+buffer_pointer, s);
 		buffer_pointer += 4;
 		flash_address += 8;
 
 		if (s > 0) {
 			segments[segment_count].address = flash_address;
 			segments[segment_count].length = s;
+			segments[segment_count].swap = little_endian;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &payload;
 			flash_address += s;
@@ -382,6 +418,7 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(const char *k, bool noramdisk, cons
 	flash_address = NSLU2Protocol::FlashSize-16;
 	segments[segment_count].address = flash_address;
 	segments[segment_count].length = 15;
+	segments[segment_count].swap = false;
 	segments[segment_count].data = buffer+buffer_pointer;
 	segments[segment_count++].file = 0;
 	buffer[buffer_pointer++] = product_id >> 8;
@@ -421,6 +458,9 @@ void NSLU2Image::SynthesiseImage::GetBytes(char *buffer, size_t buffer_length,
 			flash_address = base;
 		else
 			offset = flash_address-base;
+		if (flash_address & 3)
+			throw std::logic_error("non-word-aligned flash address");
+
 		int len(segments[i].length - offset);
 		if (len > buffer_length)
 			len = buffer_length;
@@ -443,6 +483,11 @@ void NSLU2Image::SynthesiseImage::GetBytes(char *buffer, size_t buffer_length,
 		while (len & 3)
 			buffer[len++] = '\xff';
 
+		/* If required quad-byte-swap this data. */
+		if (segments[i].swap) for (int j(0); j<len; j+=4) {
+			Write32BE(buffer+j, Read32LE(buffer+j));
+		}
+
 		address = flash_address;
 		length = len;
 		flash_address += len;
@@ -452,10 +497,10 @@ void NSLU2Image::SynthesiseImage::GetBytes(char *buffer, size_t buffer_length,
 	}
 }
 
-NSLU2Image::Image *NSLU2Image::Image::MakeImage(const char *k, bool nr,
+NSLU2Image::Image *NSLU2Image::Image::MakeImage(bool le, const char *k, bool nr,
 		const char *ram, const char *root, const char *fis,
 		unsigned short product_id, unsigned short protocol_id,
 		unsigned short firmware_version, unsigned short extra_version) {
-	return new SynthesiseImage(k, nr, ram, root, fis, product_id, protocol_id,
+	return new SynthesiseImage(le, k, nr, ram, root, fis, product_id, protocol_id,
 			firmware_version, extra_version);
 }
