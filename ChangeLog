@@ -1,3 +1,5 @@
 initial      Initial version
 
 upslug2_6    Added LE support
+
+upslug2_7    Added LE 2-byte swap and corrected LE support
