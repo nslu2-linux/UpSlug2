@@ -207,7 +207,8 @@ namespace NSLU2Image {
 		struct Segment {
 			int            address;
 			int            length;
-			bool           swap;
+			bool           swap;    /* quad byte swap */
+			bool           swab;    /* two byte swap */
 			const char*    data;
 			std::ifstream* file;
 		}         segments[32];
@@ -284,13 +285,21 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 		segments[segment_count].address = flash_address;
 		segments[segment_count].length = 4;
 		segments[segment_count].swap = false;
+		segments[segment_count].swab = false;
 		segments[segment_count].data = buffer+buffer_pointer;
 		segments[segment_count++].file = 0;
 		buffer_pointer += 4;
 		if (s > 0) {
+			/* An LE kernel is written on the assumption that byte 0
+			 * will end in in the LSB, but RedBoot will both write
+			 * and subsequently read it as a set of BE values - byte 0
+			 * goes into the MSB of the first word, so we need to
+			 * quad-byte-swap
+			 */
 			segments[segment_count].address = flash_address+16;
 			segments[segment_count].length = s;
 			segments[segment_count].swap = little_endian;
+			segments[segment_count].swab = false;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &kernel;
 		}
@@ -317,14 +326,30 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 		segments[segment_count].address = flash_address;
 		segments[segment_count].length = 4;
 		segments[segment_count].swap = false;
+		segments[segment_count].swab = false;
 		segments[segment_count].data = buffer+buffer_pointer;
 		segments[segment_count++].file = 0;
 		buffer_pointer += 4;
 		flash_address += 16;
 		if (s > 0) {
+			/* Data is assumed to be a simple byte stream in the
+			 * correct format.  For LE RedBoot will write the first
+			 * two bytes into the first 16 bit flash word with the
+			 * first byte most significant.  Since the first byte
+			 * should be least significant (but still in the first
+			 * word) we need to double-byte-swap (swab) the data.
+			 *
+			 * Note that this differs from the kernel primarily because
+			 * RedBoot writes (BE) but the data is then read from an
+			 * LE CPU.  Because the Intel architecture treats the
+			 * flash as 16 bit and does not word-swap the addresses (in
+			 * fact the flash is effectively BE) we have to do 2 byte
+			 * swapping.
+			 */
 			segments[segment_count].address = flash_address;
 			segments[segment_count].length = s;
-			segments[segment_count].swap = little_endian;
+			segments[segment_count].swap = false;
+			segments[segment_count].swab = little_endian;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &ramdisk;
 			flash_address += s;
@@ -353,7 +378,8 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 		if (s > 0) {
 			segments[segment_count].address = flash_address;
 			segments[segment_count].length = s;
-			segments[segment_count].swap = little_endian;
+			segments[segment_count].swap = false;
+			segments[segment_count].swab = little_endian;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &rootfs;
 			flash_address += s;
@@ -366,7 +392,8 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 	for (int i(0); i<=fis_count; ++i) {
 		segments[segment_count].address = flash_address;
 		segments[segment_count].length = 36;
-		segments[segment_count].swap = little_endian;
+		segments[segment_count].swap = false;
+		segments[segment_count].swab = little_endian;
 		segments[segment_count].data = fis[i];
 		segments[segment_count++].file = 0;
 		flash_address += 256;
@@ -392,6 +419,7 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 		segments[segment_count].address = flash_address;
 		segments[segment_count].length = 8;
 		segments[segment_count].swap = false;
+		segments[segment_count].swab = false;
 		segments[segment_count].data = buffer+buffer_pointer;
 		segments[segment_count++].file = 0;
 		buffer[buffer_pointer++] = 255;
@@ -405,7 +433,8 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 		if (s > 0) {
 			segments[segment_count].address = flash_address;
 			segments[segment_count].length = s;
-			segments[segment_count].swap = little_endian;
+			segments[segment_count].swap = false;
+			segments[segment_count].swab = little_endian;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &payload;
 			flash_address += s;
@@ -419,6 +448,7 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 	segments[segment_count].address = flash_address;
 	segments[segment_count].length = 15;
 	segments[segment_count].swap = false;
+	segments[segment_count].swab = false;
 	segments[segment_count].data = buffer+buffer_pointer;
 	segments[segment_count++].file = 0;
 	buffer[buffer_pointer++] = product_id >> 8;
@@ -483,9 +513,20 @@ void NSLU2Image::SynthesiseImage::GetBytes(char *buffer, size_t buffer_length,
 		while (len & 3)
 			buffer[len++] = '\xff';
 
+		/* At present expect only one of swab or swap. */
+		if (segments[i].swab && segments[i].swap)
+			throw std::logic_error("swap and swab both specified");
+
 		/* If required quad-byte-swap this data. */
-		if (segments[i].swap) for (int j(0); j<len; j+=4) {
+		if (segments[i].swap) for (int j(0); j+4<=len; j+=4) {
 			Write32BE(buffer+j, Read32LE(buffer+j));
+		}
+
+		/* Likewise for swab */
+		if (segments[i].swab) for (int j(0); j+2<=len; j+=2) {
+			char tmp(buffer[0]);
+			buffer[0] = buffer[1], ++buffer;
+			*buffer++ = tmp;
 		}
 
 		address = flash_address;
