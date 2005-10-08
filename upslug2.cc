@@ -263,7 +263,8 @@ int main(int argc, char **argv) {
 	bool                no_upgrade(false);    /* Do not upgrade, just verify */
 	bool                no_verify(false);     /* Do not verify, just upgrade */
 	bool                no_reboot(false);     /* Do not reboot after upgrade or verify */
-	bool                le(false);            /* Write little endian */
+	char                kernel_sex('b');      /* Byte sex of kernel */
+	char                data_sex('b');        /* Byte sex of data */
 	const char*         device = "eth0";      /* Hardware device to use */
 	const char*         target = "broadcast"; /* User specified target name */
 	const unsigned char*mac = 0;              /* Ethernet address to upgrade. */
@@ -300,7 +301,9 @@ int main(int argc, char **argv) {
 { "ram-payload:              payload (replaces ramdisk)",       required_argument, 0, 'R' },
 { "rootfs:                   jffs2 (flash) rootfs",             required_argument, 0, 'j' },
 { "payload:                  FIS directory payload",            required_argument, 0, 'p' },
-{ "little-endian:            byte swap flash contents",         no_argument,       0, 'l' },
+{ "little-endian:            little endian kernel and data",    no_argument,       0, 'l' },
+{ "pdp-endian:               little endian kernel, PDP data",   no_argument,       0, 'L' },
+{ "little-big:               little endian kernel, big data",   no_argument,       0, 'B' },
 { "product-id[1]:            2 byte product id",                required_argument, 0, 'P' },
 { "protocol-id[0]:           2 byte protocol id",               required_argument, 0, 'T' },
 { "firmware-version[0x2329]: 2 byte firmware version",          required_argument, 0, 'F' },
@@ -308,7 +311,7 @@ int main(int argc, char **argv) {
 { 0,                                                            0,                 0,  0  }
 	};
 
-	do switch (getopt_long(argc, argv, "hld:t:vUni:Ck:r:R:j:p:P:T:F:E:", options, 0)) {
+	do switch (getopt_long(argc, argv, "hlLBd:t:vUni:Ck:r:R:j:p:P:T:F:E:", options, 0)) {
 	case  -1: if (optind < argc) {
 			  std::fprintf(stderr, "%s: unrecognised option\n", argv[optind]);
 			  std::exit(1);
@@ -317,7 +320,9 @@ int main(int argc, char **argv) {
 	case ':':
 	case '?': std::exit(1);
 	case 'h': help(options); std::exit(1);
-	case 'l': le = true; break;
+	case 'l': kernel_sex = 'l'; data_sex = 'l'; break;
+	case 'L': kernel_sex = 'l'; data_sex = 'p'; break;
+	case 'B': kernel_sex = 'l'; data_sex = 'b'; break;
 	case 'd': device = optarg; break;
 	case 't': target = optarg; parse_mac(macBuffer, target); mac = macBuffer; break;
 	case 'v': no_verify = false; no_upgrade = true; break;
@@ -365,7 +370,7 @@ done:
 				 */
 				Pointer<NSLU2Image::Image> image(
 						NSLU2Image::Image::MakeImage(
-							le,
+							kernel_sex, data_sex,
 							kernel,
 							ram_payload != 0, /* noramdisk */
 							ram_payload ? ram_payload : ram_disk,

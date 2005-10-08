@@ -84,8 +84,9 @@ namespace NSLU2Image {
 
 	class SynthesiseImage : public Image {
 	public:
-		SynthesiseImage(bool le, const char *k, bool noramdisk, const char *ram,
-			const char *root, const char *f,
+		SynthesiseImage(char kernel_sex, char data_sex,
+			const char *k, bool noramdisk,
+			const char *ram, const char *root, const char *f,
 			unsigned short product_id, unsigned short protocol_id,
 			unsigned short firmware_version, unsigned short extra_version);
 		virtual ~SynthesiseImage() {
@@ -139,7 +140,11 @@ namespace NSLU2Image {
 			*p++ = v >> 24;
 		}
 
-		/* Write a 32 bit image-endian value. */
+		/* Write a 32 bit image-endian value - the actual test is on
+		 * the kernel endianness, not the data endianness, because this
+		 * is a value which is written into the data (byte stream) in a
+		 * format the kernel is expected to recognise!
+		 */
 		inline void Write32IE(char *p, unsigned long v) {
 			if (little_endian)
 				Write32LE(p, v);
@@ -198,6 +203,7 @@ namespace NSLU2Image {
 		int      buffer_pointer; /* Index of next free slot in buffer */
 		int      flash_address;  /* Current flash address */
 		bool     little_endian;  /* Build a little endian image */
+		bool     pdp_endian;     /* half-word, not quad-word, swap the data */
 		/* The flash partitions have a data header then data from a file,
 		 * represent this as an array of Segment entries, up to 2x5 for
 		 * the actual partitions, 6 FIS entries (all data), a payload and
@@ -237,7 +243,8 @@ NSLU2Image::Image *NSLU2Image::Image::MakeImage(bool reprogram, const char *imag
 }
 
 /*-
- * le               - build a little-endian image
+ * kernel_sex       - byte sex of kernel (determines FIS sex)
+ * data_sex         - byte sex of data (l, b or p for PDP!)
  * k(kernel)        - file containing a kernel image
  * nr(noramdisk)    - causes the image to contain a zero length ramdisk
  * ram(ramdisk)     - the ramdisk image (if nr this is just a payload)
@@ -247,13 +254,15 @@ NSLU2Image::Image *NSLU2Image::Image::MakeImage(bool reprogram, const char *imag
  * Synthesises an image and writes this to flash (never overwrites the
  * boot loader).
  */
-NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
+NSLU2Image::SynthesiseImage::SynthesiseImage(char kernel_sex, char data_sex,
 		const char *k, bool noramdisk, const char *ram,
 		const char *root, const char *f, unsigned short product_id,
 		unsigned short protocol_id, unsigned short firmware_version,
 		unsigned short extra_version) :
-	little_endian(le), segment_count(0), buffer_pointer(0), flash_address(0) {
+	little_endian(kernel_sex == 'l'), segment_count(0), buffer_pointer(0), flash_address(0) {
 	const char *fis[8];
+	bool swap(data_sex == 'l');
+	bool swab(data_sex == 'p');
 	/* Use open to open the files, not the constructor, because the arguments
 	 * may be null, this also means that the ifstream can be used to determine
 	 * whether or not the file exists.
@@ -332,7 +341,8 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 		buffer_pointer += 4;
 		flash_address += 16;
 		if (s > 0) {
-			/* Data is assumed to be a simple byte stream in the
+			/* PDP case:
+			 * Data is assumed to be a simple byte stream in the
 			 * correct format.  For LE RedBoot will write the first
 			 * two bytes into the first 16 bit flash word with the
 			 * first byte most significant.  Since the first byte
@@ -345,11 +355,14 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 			 * flash as 16 bit and does not word-swap the addresses (in
 			 * fact the flash is effectively BE) we have to do 2 byte
 			 * swapping.
+			 *
+			 * Standard case:
+			 * Quad byte swap
 			 */
 			segments[segment_count].address = flash_address;
 			segments[segment_count].length = s;
-			segments[segment_count].swap = false;
-			segments[segment_count].swab = little_endian;
+			segments[segment_count].swap = swap;
+			segments[segment_count].swab = swab;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &ramdisk;
 			flash_address += s;
@@ -378,8 +391,8 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 		if (s > 0) {
 			segments[segment_count].address = flash_address;
 			segments[segment_count].length = s;
-			segments[segment_count].swap = false;
-			segments[segment_count].swab = little_endian;
+			segments[segment_count].swap = swap;
+			segments[segment_count].swab = swab;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &rootfs;
 			flash_address += s;
@@ -392,8 +405,8 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 	for (int i(0); i<=fis_count; ++i) {
 		segments[segment_count].address = flash_address;
 		segments[segment_count].length = 36;
-		segments[segment_count].swap = false;
-		segments[segment_count].swab = little_endian;
+		segments[segment_count].swap = swap;
+		segments[segment_count].swab = swab;
 		segments[segment_count].data = fis[i];
 		segments[segment_count++].file = 0;
 		flash_address += 256;
@@ -433,8 +446,8 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(bool le,
 		if (s > 0) {
 			segments[segment_count].address = flash_address;
 			segments[segment_count].length = s;
-			segments[segment_count].swap = false;
-			segments[segment_count].swab = little_endian;
+			segments[segment_count].swap = swap;
+			segments[segment_count].swab = swab;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &payload;
 			flash_address += s;
@@ -538,10 +551,11 @@ void NSLU2Image::SynthesiseImage::GetBytes(char *buffer, size_t buffer_length,
 	}
 }
 
-NSLU2Image::Image *NSLU2Image::Image::MakeImage(bool le, const char *k, bool nr,
+NSLU2Image::Image *NSLU2Image::Image::MakeImage(char kernel_sex, char data_sex,
+		const char *k, bool nr,
 		const char *ram, const char *root, const char *fis,
 		unsigned short product_id, unsigned short protocol_id,
 		unsigned short firmware_version, unsigned short extra_version) {
-	return new SynthesiseImage(le, k, nr, ram, root, fis, product_id, protocol_id,
-			firmware_version, extra_version);
+	return new SynthesiseImage(kernel_sex, data_sex, k, nr, ram, root, fis,
+			product_id, protocol_id, firmware_version, extra_version);
 }
