@@ -35,7 +35,8 @@ namespace NSLU2Upgrade {
 	 */
 	class PCapWire : public Wire {
 	public:
-		PCapWire(pcap_t *p, const char *device, const unsigned char address[6]) :
+		PCapWire(pcap_t *p, const char *device, const unsigned char *mac,
+				const unsigned char address[6]) :
 			pcap(p), file(pcap_fileno(p)), broadcast(address == 0) {
 			/* The 255 gives the ethernet hardware broadcast address,
 			 * set this if a host address is provided.  The packet
@@ -61,20 +62,8 @@ namespace NSLU2Upgrade {
 			if (file == -1)
 				throw WireError(errno);
 
-			/* The MAC of the transmitting device is needed - without
-			 * this the return packet won't go to the right place!
-			 */
-			struct ifreq device_interface;
-			strncpy(device_interface.ifr_name, device,
-					sizeof device_interface.ifr_name);
-			device_interface.ifr_name[(sizeof device_interface.ifr_name)-1] = 0;
-
-			/* Get the hardware information. */
-			if (ioctl(file, SIOCGIFHWADDR, &device_interface) == (-1))
-				throw WireError(errno);
-
 			/* And copy the MAC address into the header. */
-			std::memcpy(header+6, device_interface.ifr_hwaddr.sa_data, 6);
+			std::memcpy(header+6, mac, 6);
 		}
 
 		virtual ~PCapWire() {
@@ -271,7 +260,7 @@ namespace NSLU2Upgrade {
  *  given (NULL) a potentially useless default will be used.
  */
 NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
-		const unsigned char *address, int uid) {
+		const unsigned char *mac, const unsigned char *address, int uid) {
 	/* Check the device name.  If not given use 'eth0'. */
 	if (device == NULL)
 		device = "eth0";
@@ -292,6 +281,33 @@ NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
 	}
 
 	try {
+		/* The MAC of the transmitting device is needed - without
+		 * this the return packet won't go to the right place!
+		 */
+		unsigned char macBuffer[6];
+		std::memset(macBuffer, 0, sizeof macBuffer);
+
+#		if defined SIOCGIFHWADDR
+			if (mac == NULL) {
+				struct ifreq device_interface;
+
+				strncpy(device_interface.ifr_name, device,
+						sizeof device_interface.ifr_name);
+				device_interface.ifr_name[(sizeof device_interface.ifr_name)-1] = 0;
+
+				/* Get the hardware information. */
+				if (ioctl(pcap_fileno(pcap), SIOCGIFHWADDR, &device_interface) == (-1))
+					throw WireError(errno);
+
+				std::memcpy(macBuffer, device_interface.ifr_hwaddr.sa_data, 6);
+				mac = macBuffer;
+			}
+#		else
+#			error compilation currently requires a way to find the source MAC
+			if (mac == NULL)
+				throw std::logic_error("source MAC address not specified");
+#		endif
+
 		/* libpcap has the primary purpose of slurping all the packets then
 		 * filtering out interesting ones.  This is a somewhat dumb way of
 		 * receiving packets from a known protocol, but this seems to be the
@@ -317,7 +333,7 @@ NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
 		}
 
 		/* This is enough to make a new wire. */
-		return new PCapWire(pcap, device, address);
+		return new PCapWire(pcap, device, mac, address);
 	} catch (...) {
 		/* Error cleanup - the pcap needs to be deleted. */
 		pcap_close(pcap);
