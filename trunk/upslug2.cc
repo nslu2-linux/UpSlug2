@@ -269,6 +269,9 @@ int main(int argc, char **argv) {
 	const char*         target = "broadcast"; /* User specified target name */
 	const unsigned char*mac = 0;              /* Ethernet address to upgrade. */
 	unsigned char       macBuffer[6];         /* To store the command line address */
+	const char*         from = 0;             /* User specified host MAC. */
+	const unsigned char*fromMac = 0;          /* Decoded ethernet address of from. */
+	unsigned char       fromMacBuffer[6];     /* Storage space for this. */
 
 	/* The ID fields are defaulted here, these defaults are taken from
 	 * the NSLU2 V23R29 flash image.
@@ -291,6 +294,7 @@ int main(int argc, char **argv) {
 { "help:                     output this help message",         no_argument,       0, 'h' },
 { "device[eth0]:             local ethernet device to use",     required_argument, 0, 'd' },
 { "target:                   NSLU2 to upgrade (MAC address)",   required_argument, 0, 't' },
+{ "from:                     MAC of host (this machine)",       required_argument, 0, 'f' },
 { "verify:                   verify only (do not write flash)", no_argument,       0, 'v' },
 { "no-verify:                upgrade only (do not verify)",     no_argument,       0, 'U' },
 { "no-reboot:                do not reboot after upgrade",      no_argument,       0, 'n' },
@@ -311,7 +315,7 @@ int main(int argc, char **argv) {
 { 0,                                                            0,                 0,  0  }
 	};
 
-	do switch (getopt_long(argc, argv, "hlLBd:t:vUni:Ck:r:R:j:p:P:T:F:E:", options, 0)) {
+	do switch (getopt_long(argc, argv, "hlLBd:t:f:vUni:Ck:r:R:j:p:P:T:F:E:", options, 0)) {
 	case  -1: if (optind < argc) {
 			  std::fprintf(stderr, "%s: unrecognised option\n", argv[optind]);
 			  std::exit(1);
@@ -325,6 +329,7 @@ int main(int argc, char **argv) {
 	case 'B': kernel_sex = 'l'; data_sex = 'b'; break;
 	case 'd': device = optarg; break;
 	case 't': target = optarg; parse_mac(macBuffer, target); mac = macBuffer; break;
+	case 'f': from = optarg; parse_mac(fromMacBuffer, from); fromMac = fromMacBuffer; break;
 	case 'v': no_verify = false; no_upgrade = true; break;
 	case 'U': no_verify = true; no_upgrade = false; break;
 	case 'n': no_reboot = true; break;
@@ -349,7 +354,7 @@ done:
 
 	try {
 		if (mac) {
-			Pointer<NSLU2Upgrade::Wire> wire(NSLU2Upgrade::Wire::MakeWire(device, mac, euid));
+			Pointer<NSLU2Upgrade::Wire> wire(NSLU2Upgrade::Wire::MakeWire(device, fromMac, mac, euid));
 			ProgressBar progress(reprogram, mac);
 
 			if (full_image) { /* complete image. */
@@ -387,7 +392,7 @@ done:
 				Reboot(upgrade.p, no_reboot);
 			}
 		} else {
-			Pointer<NSLU2Upgrade::Wire> wire(NSLU2Upgrade::Wire::MakeWire(device, 0, euid));
+			Pointer<NSLU2Upgrade::Wire> wire(NSLU2Upgrade::Wire::MakeWire(device, fromMac, 0, euid));
 			Pointer<NSLU2Upgrade::GetHardwareInfo> ghi(
 					NSLU2Upgrade::GetHardwareInfo::MakeGetHardwareInfo(
 						wire.p, 0x1234));

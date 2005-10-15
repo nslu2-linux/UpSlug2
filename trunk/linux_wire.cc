@@ -175,9 +175,12 @@ namespace NSLU2Upgrade {
  * is the hardware device name to use - the value of the
  * --device parameter on the command line (if given).  If not
  *  given (NULL) a potentially useless default will be used.
+ *
+ *  The (from) mac is ignored in the Linux implementation since
+ *  it can always be set correctly.
  */
 NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
-		const unsigned char *address, int uid) {
+		const unsigned char *mac, const unsigned char *address, int uid) {
 	int packet_socket;
 	struct ifreq device_interface;
 

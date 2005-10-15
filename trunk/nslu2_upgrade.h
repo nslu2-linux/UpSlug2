@@ -71,10 +71,16 @@ namespace NSLU2Upgrade {
 		 *  to make the wire if the current effective user id has
 		 *  insufficient privelege.
 		 *
+		 *  The mac parameter should be the 6 byte ethernet address of
+		 *  this device, if not given the internal code will attempt to
+		 *  extract it from the device name.  In general it should not
+		 *  be given, but this is a work round for when porting to a new
+		 *  OS.
+		 *
 		 *  Throws WireError on (OS) error.
 		 */
-		static Wire *MakeWire(const char *device, const unsigned char address[6],
-				int uid);
+		static Wire *MakeWire(const char *device, const unsigned char *mac,
+				const unsigned char address[6], int uid);
 	};
 
 	/* The implemented classes. */
