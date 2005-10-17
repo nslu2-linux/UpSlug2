@@ -13,10 +13,20 @@ namespace NSLU2Upgrade {
 	/* Exception classes. */
 	class OSError : public std::exception {
 	public:
-		inline OSError(int err) : errval(err) {
+		inline OSError(int err) : errval(err), reason(0) {
+		}
+		inline OSError(int err, const char *what) :
+			errval(err), reason(what) {
 		}
 
-		int errval; /* OS errno value */
+		const char *what(void) {
+			if (reason)
+				return reason;
+			return std::exception::what();
+		}
+
+		int         errval; /* OS errno value */
+		const char *reason; /* Additional error information */
 	};
 
 	class SendError : public OSError {
@@ -32,6 +42,7 @@ namespace NSLU2Upgrade {
 	class WireError : public OSError {
 	public:
 		inline WireError(int err) : OSError(err) { }
+		inline WireError(int err, const char *what) : OSError(err, what) { }
 	};
 
 	/* The basic class implemented to transmit and receive packets over the

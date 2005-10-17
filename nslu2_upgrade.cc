@@ -14,7 +14,7 @@ namespace NSLU2Upgrade {
 	};
 
 	/* Real implementations. */
-	class RealGetHardwareInfo : protected GetHardwareInfo {
+	class RealGetHardwareInfo : public GetHardwareInfo {
 	public:
 		RealGetHardwareInfo(Wire *w, int s) :
 			wire(w), sequence(s & 0xffff) {
@@ -84,7 +84,7 @@ namespace NSLU2Upgrade {
 		return new RealGetHardwareInfo(wire, seq);
 	}
 
-	class RealDoUpgrade : protected DoUpgrade {
+	class RealDoUpgrade : public DoUpgrade {
 	public:
 		RealDoUpgrade(Wire *w, Progress *p, bool r) :
 			wire(w), progress(p), sequenceError(-1), reprogram(r),

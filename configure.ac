@@ -58,7 +58,7 @@ AC_TYPE_UID_T
 AC_PROG_GCC_TRADITIONAL
 AC_FUNC_MEMCMP
 AC_FUNC_SELECT_ARGTYPES
-AC_CHECK_FUNCS([memset select socket strerror strtoul])
+AC_CHECK_FUNCS([memset select socket strerror strtoul getifaddrs])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

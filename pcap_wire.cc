@@ -10,20 +10,39 @@
 #include <stdexcept>
 #include <cerrno>
 
-#if BROKEN_PCAP_TIMEOUT
+#include <sys/types.h>  /* Required for class EUID */
+
+#if BROKEN_PCAP_TIMEOUT || HAVE_GETIFADDRS
 #	include <sys/socket.h>
+#endif
+
+#if BROKEN_PCAP_TIMEOUT
 #	include <sys/select.h>
 #endif
-/* These are for the netdevice ioctl to read the hardware MAC, this may
- * be Linux specific, in which case it will be necessary to find another
- * way of getting the MAC (clearly it's possible because ifconfig outputs
- * it!)
+
+/* Ways of finding the hardware MAC on this machine... */
+/* This is the Linux only fallback. */
+#ifdef SIOCGIFHWADDR
+#	include <sys/ioctl.h>
+#	include <net/if.h>
+#endif
+
+#if HAVE_GETIFADDRS
+#	include <ifaddrs.h>
+#endif
+
+/* Now the struct sockaddr header files for the required protocol
+ * families.  Expect either AF_LINK (BSDs) or AF_PACKET(Linux), or
+ * maybe both to be returned from getifaddrs.
  */
-#include <sys/ioctl.h>
-#include <net/if.h>
+#ifdef AF_LINK
+#	include <net/if_dl.h>
+#endif
+#ifdef AF_PACKET
+#	include <netpacket/packet.h>
+#endif
 
 #include <unistd.h>
-#include <sys/types.h>  /* Required for class EUID */
 
 #include <pcap.h>
 
@@ -287,7 +306,59 @@ NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
 		unsigned char macBuffer[6];
 		std::memset(macBuffer, 0, sizeof macBuffer);
 
-#		if defined SIOCGIFHWADDR
+		/* If the MAC is not given (the normal case) use getifaddrs to find
+		 * the MAC of the named device.  getifaddrs is the standard BSD
+		 * interface, but it seems to exist on Linux too (anyway, this Wire
+		 * implementation should probably not be used on Linux!)
+		 */
+#		if HAVE_GETIFADDRS
+			if (mac == NULL) {
+				struct ifaddrs *ifap;
+
+				if (getifaddrs(&ifap) != 0)
+					throw WireError(errno, "getifaddrs failed");
+
+				try {
+					struct ifaddrs *ifa = ifap;
+					do {
+						if (ifa == NULL)
+							break;
+
+#						ifdef AF_LINK
+							if (ifa->ifa_addr->sa_family == AF_LINK &&
+								strcmp(ifa->ifa_name, device) == 0) {
+								const struct sockaddr_dl *sdl =
+									reinterpret_cast<struct sockaddr_dl*>(ifa->ifa_addr);
+								std::memcpy(macBuffer, LLADDR(sdl), 6);
+								mac = macBuffer;
+								break;
+							}
+#						endif
+#						ifdef AF_PACKET
+							if (ifa->ifa_addr->sa_family == AF_PACKET &&
+								strcmp(ifa->ifa_name, device) == 0) {
+								const struct sockaddr_ll *sll =
+									reinterpret_cast<struct sockaddr_ll*>(ifa->ifa_addr);
+								std::memcpy(macBuffer, sll->sll_addr, 6);
+								mac = macBuffer;
+								break;
+							}
+#						endif
+
+						ifa = ifa->ifa_next;
+					} while (1);
+				} catch (...) {
+					freeifaddrs(ifap);
+					throw;
+				}
+
+				freeifaddrs(ifap);
+			}
+#		endif
+#		ifdef SIOCGIFHWADDR
+			/* This is a fallback which currently is only know to work
+			 * on Linux.
+			 */
 			if (mac == NULL) {
 				struct ifreq device_interface;
 
@@ -302,11 +373,10 @@ NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
 				std::memcpy(macBuffer, device_interface.ifr_hwaddr.sa_data, 6);
 				mac = macBuffer;
 			}
-#		else
-#			error compilation currently requires a way to find the source MAC
-			if (mac == NULL)
-				throw std::logic_error("source MAC address not specified");
 #		endif
+
+		if (mac == NULL)
+			throw WireError(ENOENT, "no link-level interface to provide hardware MAC");
 
 		/* libpcap has the primary purpose of slurping all the packets then
 		 * filtering out interesting ones.  This is a somewhat dumb way of
