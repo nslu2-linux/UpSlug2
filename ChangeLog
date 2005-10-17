@@ -3,3 +3,9 @@ initial      Initial version
 upslug2_6    Added LE support
 
 upslug2_7    Added LE 2-byte swap and corrected LE support
+
+upslug2_8    More byte swapping support
+
+upslug2_9    Mac support, change pcap_wire to use getifaddrs
+             Better target handling (-t)
+             Auto-recognition of kernel byte sex and better byte sex options

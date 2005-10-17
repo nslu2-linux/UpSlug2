@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <fstream>
 
 #include <unistd.h>
 #include <sys/types.h>   /* For getuid/euid */
@@ -252,6 +253,72 @@ unsigned short parse_number(const char *arg) {
 	return n;
 }
 
+/* Parse byte sex specifier in the form s,s where s may be l, p, b or
+ * empty.  (The parsing routine does actually accept garbage composed
+ * of repeated l/p/b, e.g. llp,bbl).
+ */
+void parse_bytesex(char &k, char &d, const char *arg) {
+	const char *sav = arg;
+	bool data(false);
+
+	while (char val = *arg++) switch (val) {
+	case 0:     return;
+	case ',':   data = true;
+				break;
+	case 'p':   /* only valid for data */
+				if (!data) {
+					std::fprintf(stderr, "%s: PDP byte sex only valid for data\n", sav);
+					std::exit(1);
+				}
+				/* fall through */
+	case 'l':
+	case 'b':   if (data)
+					d = val;
+				else
+					k = val;
+				break;
+	default:    std::fprintf(stderr, "%s: '%c': invalid byte sex\n", sav, val);
+				std::exit(1);
+	}
+}
+
+/* Guess the sex of the kernel from the file of data, NOTE: this API
+ * as a side effect outputs a message saying which endianness has
+ * been selected, call it only once...
+ */
+char guess_sex(const char *kernel) {
+		std::ifstream kfile(kernel, std::ios::in | std::ios::binary);
+		if (!kfile.good()) {
+			std::fprintf(stderr, "%s: failed to open kernel file\n", kernel);
+			std::exit(1);
+		}
+		/* Read the first four bytes */
+		char b1, b2, b3, b4;
+		kfile >> b1 >> b2 >> b3 >> b4;
+		if (!kfile.good()) {
+			std::fprintf(stderr, "%s: failed to read kernel file\n", kernel);
+			std::exit(1);
+		}
+		/* The first word of the kernel must be an instruction which is
+		 * unconditionally executed (because the setting of the condition
+		 * codes is not likely to be reliable - it depends on the boot loader).
+		 * So check for an AL instruction condition.
+		 */
+		const bool big((b1 & 0xf0) == 0xe0);
+		const bool little((b4 & 0xf0) == 0xe0);
+		if (big == little) {
+			/* This is the unexpected ambiguous case */
+			printf("WARNING: kernel assumed to be big endian, use '-e l' to override\n");
+			return 'b';
+		}
+		if (little) {
+			printf("[little-endian kernel]\n");
+			return 'l';
+		}
+		printf("[big-endian kernel]\n");
+		return 'b';
+}
+
 int main(int argc, char **argv) {
 	/* The effective uid is stored for later use and reset for the moment
 	 * to the real user id.
@@ -263,7 +330,8 @@ int main(int argc, char **argv) {
 	bool                no_upgrade(false);    /* Do not upgrade, just verify */
 	bool                no_verify(false);     /* Do not verify, just upgrade */
 	bool                no_reboot(false);     /* Do not reboot after upgrade or verify */
-	char                kernel_sex('b');      /* Byte sex of kernel */
+	bool                got_kernel(false);    /* Either kernel or full image specified */
+	char                kernel_sex(0);        /* Byte sex of kernel */
 	char                data_sex('b');        /* Byte sex of data */
 	const char*         device = "eth0";      /* Hardware device to use */
 	const char*         target = "broadcast"; /* User specified target name */
@@ -305,9 +373,11 @@ int main(int argc, char **argv) {
 { "ram-payload:              payload (replaces ramdisk)",       required_argument, 0, 'R' },
 { "rootfs:                   jffs2 (flash) rootfs",             required_argument, 0, 'j' },
 { "payload:                  FIS directory payload",            required_argument, 0, 'p' },
-{ "little-endian:            little endian kernel and data",    no_argument,       0, 'l' },
-{ "pdp-endian:               little endian kernel, PDP data",   no_argument,       0, 'L' },
-{ "little-big:               little endian kernel, big data",   no_argument,       0, 'B' },
+{ "endian[,b]:               kernel and data endianness;\n"
+  "                          [<kernel-byte-sex>],<data-byte-sex>\n"
+  "                          l: little endian\n"
+  "                          p: pdp endian\n"
+  "                          b: big endian\n",                  required_argument, 0, 'e' },
 { "product-id[1]:            2 byte product id",                required_argument, 0, 'P' },
 { "protocol-id[0]:           2 byte protocol id",               required_argument, 0, 'T' },
 { "firmware-version[0x2329]: 2 byte firmware version",          required_argument, 0, 'F' },
@@ -315,7 +385,7 @@ int main(int argc, char **argv) {
 { 0,                                                            0,                 0,  0  }
 	};
 
-	do switch (getopt_long(argc, argv, "hlLBd:t:f:vUni:Ck:r:R:j:p:P:T:F:E:", options, 0)) {
+	do switch (getopt_long(argc, argv, "he:d:t:f:vUni:Ck:r:R:j:p:P:T:F:E:", options, 0)) {
 	case  -1: if (optind < argc) {
 			  std::fprintf(stderr, "%s: unrecognised option\n", argv[optind]);
 			  std::exit(1);
@@ -324,18 +394,16 @@ int main(int argc, char **argv) {
 	case ':':
 	case '?': std::exit(1);
 	case 'h': help(options); std::exit(1);
-	case 'l': kernel_sex = 'l'; data_sex = 'l'; break;
-	case 'L': kernel_sex = 'l'; data_sex = 'p'; break;
-	case 'B': kernel_sex = 'l'; data_sex = 'b'; break;
+	case 'e': parse_bytesex(kernel_sex, data_sex, optarg); break;
 	case 'd': device = optarg; break;
 	case 't': target = optarg; parse_mac(macBuffer, target); mac = macBuffer; break;
 	case 'f': from = optarg; parse_mac(fromMacBuffer, from); fromMac = fromMacBuffer; break;
 	case 'v': no_verify = false; no_upgrade = true; break;
 	case 'U': no_verify = true; no_upgrade = false; break;
 	case 'n': no_reboot = true; break;
-	case 'i': full_image = optarg; break;
+	case 'i': full_image = optarg; got_kernel = true; break;
 	case 'C': reprogram = true; break;
-	case 'k': kernel = optarg; break;
+	case 'k': kernel = optarg; got_kernel = true; break;
 	case 'r': ram_disk = optarg; ram_payload = 0; break;
 	case 'R': ram_disk = 0; ram_payload = optarg; break;
 	case 'j': rootfs = optarg; break;
@@ -352,8 +420,63 @@ done:
 		std::exit(1);
 	}
 
+	/* Fill in the kernel byte sex if required (only required when programming
+	 * an image in parts.)
+	 */
+	if (kernel != 0 && kernel_sex == 0)
+		kernel_sex = guess_sex(kernel);
+
 	try {
-		if (mac) {
+		/* If not given a kernel upgrade is not possible (something must be written
+		 * to the area of flash that RedBoot will load), so just look for slugs.
+		 */
+		if (mac == 0 || !got_kernel) {
+			Pointer<NSLU2Upgrade::Wire> wire(NSLU2Upgrade::Wire::MakeWire(device, fromMac, 0, euid));
+			Pointer<NSLU2Upgrade::GetHardwareInfo> ghi(
+					NSLU2Upgrade::GetHardwareInfo::MakeGetHardwareInfo(
+						wire.p, 0x1234));
+			unsigned short product_id;
+			unsigned short protocol_id;
+			unsigned short firmware_version;
+			bool found_one(false);
+			bool found_many(false);
+			while (ghi.p->Next(product_id, protocol_id, firmware_version)) {
+				wire.p->LastAddress(macBuffer);
+				found_many = found_one;
+				found_one = true;
+
+				/* I find stdio easier to use that cout, so... */
+				if (macBuffer[0] == 0x00 && macBuffer[1] == 0x0f &&
+						macBuffer[2] == 0x66) {
+					std::printf(
+		"LKG%2.2X%2.2X%2.2X %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x Product ID: %d Protocol ID:%d Firmware Version: R%2.2XV%2.2X [0x%4.4X]\n",
+		macBuffer[3], macBuffer[4], macBuffer[5],
+		macBuffer[0], macBuffer[1], macBuffer[2], macBuffer[3], macBuffer[4], macBuffer[5],
+		product_id, protocol_id, firmware_version >> 8, firmware_version & 0xff,
+		firmware_version);
+				} else {
+					/* NSLU2 with a different MAC vendor code. */
+					std::printf(
+		"NSLU2     %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x Product ID: %d Protocol ID: %d Firmware Version: R%2.2XV%2.2X [0x%4.4X]\n",
+		macBuffer[0], macBuffer[1], macBuffer[2], macBuffer[3], macBuffer[4], macBuffer[5],
+		product_id, protocol_id, firmware_version >> 8, firmware_version & 0xff,
+		firmware_version);
+				}
+			}
+
+			if (found_one) {
+				if (got_kernel) { /* something to program */
+					if (found_many) {
+						std::printf("Select an NSLU2 to upgrade with the --target(-t) option\n");
+					} else {
+						mac = macBuffer;
+					}
+				}
+			} else
+				std::printf("[no NSLU2 machines found in upgrade mode]\n");
+		}
+
+		if (mac && got_kernel) {
 			Pointer<NSLU2Upgrade::Wire> wire(NSLU2Upgrade::Wire::MakeWire(device, fromMac, mac, euid));
 			ProgressBar progress(reprogram, mac);
 
@@ -391,42 +514,6 @@ done:
 				progress.EndDisplay();
 				Reboot(upgrade.p, no_reboot);
 			}
-		} else {
-			Pointer<NSLU2Upgrade::Wire> wire(NSLU2Upgrade::Wire::MakeWire(device, fromMac, 0, euid));
-			Pointer<NSLU2Upgrade::GetHardwareInfo> ghi(
-					NSLU2Upgrade::GetHardwareInfo::MakeGetHardwareInfo(
-						wire.p, 0x1234));
-			unsigned short product_id;
-			unsigned short protocol_id;
-			unsigned short firmware_version;
-			bool found_one(false);
-			while (ghi.p->Next(product_id, protocol_id, firmware_version)) {
-				unsigned char address[6];
-				wire.p->LastAddress(address);
-				/* I find stdio easier to use that cout, so... */
-				if (address[0] == 0x00 && address[1] == 0x0f &&
-						address[2] == 0x66) {
-					std::printf(
-		"LKG%2.2X%2.2X%2.2X %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x Product ID: %d Protocol ID:%d Firmware Version: R%2.2XV%2.2X [0x%4.4X]\n",
-		address[3], address[4], address[5],
-		address[0], address[1], address[2], address[3], address[4], address[5],
-		product_id, protocol_id, firmware_version >> 8, firmware_version & 0xff,
-		firmware_version);
-					found_one = true;
-				} else {
-					/* the ethernet doesn't conform to the
-					 * expected sequence of numbers.
-					 */
-					std::printf(
-		"not-NSLU2 %2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x Product ID: %d Protocol ID: %d Firmware Version: R%2.2XV%2.2X [0x%4.4X]\n",
-		address[0], address[1], address[2], address[3], address[4], address[5],
-		product_id, protocol_id, firmware_version >> 8, firmware_version & 0xff,
-		firmware_version);
-				}
-			}
-
-			if (!found_one)
-				std::printf("[no NSLU2 machines found in upgrade mode]\n");
 		}
 	} catch (NSLU2Upgrade::FlashError e) {
 		switch (e.returnCode) {
