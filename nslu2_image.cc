@@ -84,7 +84,7 @@ namespace NSLU2Image {
 
 	class SynthesiseImage : public Image {
 	public:
-		SynthesiseImage(char kernel_sex, char data_sex,
+		SynthesiseImage(char kernel_sex, char data_sex, char directory_sex,
 			const char *k, bool noramdisk,
 			const char *ram, const char *root, const char *f,
 			unsigned short product_id, unsigned short protocol_id,
@@ -145,8 +145,8 @@ namespace NSLU2Image {
 		 * is a value which is written into the data (byte stream) in a
 		 * format the kernel is expected to recognise!
 		 */
-		inline void Write32IE(char *p, unsigned long v) {
-			if (little_endian)
+		inline void Write32FIS(char *p, unsigned long v) {
+			if (little_endian_fis)
 				Write32LE(p, v);
 			else
 				Write32BE(p, v);
@@ -187,11 +187,11 @@ namespace NSLU2Image {
 			std::strcpy(b+ 0, name);
 
 			flash_address = (flash_address + 0x1ffff) & ~0x1ffff;
-			Write32IE(b+16, 0x50000000 | flash_address);
+			Write32FIS(b+16, 0x50000000 | flash_address);
 			/* b+20: Do not set memory address */
-			Write32IE(b+24, size != 0 ? size : (length+0x1ffff) & ~0x1ffff);
+			Write32FIS(b+24, size != 0 ? size : (length+0x1ffff) & ~0x1ffff);
 			/* b+28: Do not set entry point */
-			Write32IE(b+32, length);
+			Write32FIS(b+32, length);
 			return b;
 		}
 
@@ -199,11 +199,11 @@ namespace NSLU2Image {
 		std::ifstream ramdisk;
 		std::ifstream rootfs;
 		std::ifstream payload;
-		int      segment_count;  /* Count of Segment entries used */
-		int      buffer_pointer; /* Index of next free slot in buffer */
-		int      flash_address;  /* Current flash address */
-		bool     little_endian;  /* Build a little endian image */
-		bool     pdp_endian;     /* half-word, not quad-word, swap the data */
+		int      segment_count;     /* Count of Segment entries used */
+		int      buffer_pointer;    /* Index of next free slot in buffer */
+		int      flash_address;     /* Current flash address */
+		bool     little_endian_fis; /* Build a little endian FIS directory */
+		bool     pdp_endian;        /* half-word, not quad-word, swap the data */
 		/* The flash partitions have a data header then data from a file,
 		 * represent this as an array of Segment entries, up to 2x5 for
 		 * the actual partitions, 6 FIS entries (all data), a payload and
@@ -245,6 +245,7 @@ NSLU2Image::Image *NSLU2Image::Image::MakeImage(bool reprogram, const char *imag
 /*-
  * kernel_sex       - byte sex of kernel (determines FIS sex)
  * data_sex         - byte sex of data (l, b or p for PDP!)
+ * directory_sex    - byte sex of numbers in FIS directory
  * k(kernel)        - file containing a kernel image
  * nr(noramdisk)    - causes the image to contain a zero length ramdisk
  * ram(ramdisk)     - the ramdisk image (if nr this is just a payload)
@@ -255,11 +256,13 @@ NSLU2Image::Image *NSLU2Image::Image::MakeImage(bool reprogram, const char *imag
  * boot loader).
  */
 NSLU2Image::SynthesiseImage::SynthesiseImage(char kernel_sex, char data_sex,
+		char directory_sex,
 		const char *k, bool noramdisk, const char *ram,
 		const char *root, const char *f, unsigned short product_id,
 		unsigned short protocol_id, unsigned short firmware_version,
 		unsigned short extra_version) :
-	little_endian(kernel_sex == 'l'), segment_count(0), buffer_pointer(0), flash_address(0) {
+	little_endian_fis(directory_sex == 'l'),
+	segment_count(0), buffer_pointer(0), flash_address(0) {
 	const char *fis[8];
 	bool swap(data_sex == 'l');
 	bool swab(data_sex == 'p');
@@ -307,7 +310,7 @@ NSLU2Image::SynthesiseImage::SynthesiseImage(char kernel_sex, char data_sex,
 			 */
 			segments[segment_count].address = flash_address+16;
 			segments[segment_count].length = s;
-			segments[segment_count].swap = little_endian;
+			segments[segment_count].swap = kernel_sex == 'l';
 			segments[segment_count].swab = false;
 			segments[segment_count].data = 0;
 			segments[segment_count++].file = &kernel;
@@ -552,10 +555,11 @@ void NSLU2Image::SynthesiseImage::GetBytes(char *buffer, size_t buffer_length,
 }
 
 NSLU2Image::Image *NSLU2Image::Image::MakeImage(char kernel_sex, char data_sex,
-		const char *k, bool nr,
+		char directory_sex, const char *k, bool nr,
 		const char *ram, const char *root, const char *fis,
 		unsigned short product_id, unsigned short protocol_id,
 		unsigned short firmware_version, unsigned short extra_version) {
-	return new SynthesiseImage(kernel_sex, data_sex, k, nr, ram, root, fis,
+	return new SynthesiseImage(kernel_sex, data_sex, directory_sex,
+			k, nr, ram, root, fis,
 			product_id, protocol_id, firmware_version, extra_version);
 }
