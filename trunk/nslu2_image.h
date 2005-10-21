@@ -46,6 +46,7 @@ namespace NSLU2Image {
 		/*-
 		 * kernel_sex       - byte sex of kernel (determines FIS sex)
 		 * data_sex         - byte sex of data (l, b or p for PDP!)
+		 * directory_sex    - byte sex of numbers in FIS directory
 		 * k(kernel)        - file containing a kernel image
 		 * nr(noramdisk)    - causes the image to contain a zero length ramdisk
 		 * ram(ramdisk)     - the ramdisk image (if nr this is just a payload)
@@ -55,7 +56,7 @@ namespace NSLU2Image {
 		 * Synthesises an image and writes this to flash (never overwrites the
 		 * boot loader).
 		 */
-		static Image *MakeImage(char kernel_sex, char data_sex,
+		static Image *MakeImage(char kernel_sex, char data_sex, char directory_sex,
 			const char *k, bool nr,
 			const char *ram, const char *root, const char *fis,
 			unsigned short product_id, unsigned short protocol_id,

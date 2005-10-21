@@ -166,8 +166,9 @@ void help(struct option *options) {
 	}
 	std::fprintf(stderr, "\n"
 " Specify --target to upgrade an NSLU2 (or to verify a previous upgrade)\n"
-" without --target upslug2 will list the NSLU2 machines which are currently\n"
-" in upgrade mode (and do nothing else)."
+" without no arguments upslug2 will list the NSLU2 machines which are currently\n"
+" in upgrade mode (and do nothing else).  Without --targeet upslug2 will only\n"
+" perform an upgrade if there is just one NSLU2 in upgrade mode.\n"
 "\n"
 " Specify --image=<file> if a complete NSLU2 flash image is available, if\n"
 " --Complete-reprogram is specified the whole flash image will be overwritten\n"
@@ -176,7 +177,13 @@ void help(struct option *options) {
 "\n"
 " Alternatively specify --kernel and --rootfs to build the image which will be\n"
 " used to upgrade the NSLU2.  In this case --product-id, --protocol-id and\n"
-" --firmware-version should be specified to set these fields in the flash image.\n");
+" --firmware-version should be specified to set these fields in the flash image.\n"
+"\n"
+" Image endianness is detected automatically from the kernel.  By default no byte\n"
+" swapping is performed (none is normally necessary).  The --endian flag can be\n"
+" used to force byte swapping to occur.  It takes three arguments separated by ','\n"
+" characters to specify the endianness of the kernel, the data and the values in\n"
+" the RedBoot FIS directory\n");
 	std::exit(1);
 }
 
@@ -254,69 +261,73 @@ unsigned short parse_number(const char *arg) {
 }
 
 /* Parse byte sex specifier in the form s,s where s may be l, p, b or
- * empty.  (The parsing routine does actually accept garbage composed
+ * empty.  (The parsing routine does actually accepts garbage composed
  * of repeated l/p/b, e.g. llp,bbl).
  */
-void parse_bytesex(char &k, char &d, const char *arg) {
+void parse_bytesex(char &k, char &d, char &f, const char *arg) {
 	const char *sav = arg;
 	bool data(false);
+	bool directory(false);
 
 	while (char val = *arg++) switch (val) {
-	case 0:     return;
-	case ',':   data = true;
-				break;
-	case 'p':   /* only valid for data */
-				if (!data) {
-					std::fprintf(stderr, "%s: PDP byte sex only valid for data\n", sav);
-					std::exit(1);
-				}
-				/* fall through */
+	case 0:
+		return;
+	case ',':
+		if (directory) return;
+		directory = data;
+		data = !data;
+		break;
+	case 'p':  /* only valid for data */
+		if (!data) {
+			std::fprintf(stderr, "%s: PDP byte sex only valid for data\n", sav);
+			std::exit(1);
+		}
+		/* fall through */
 	case 'l':
-	case 'b':   if (data)
-					d = val;
-				else
-					k = val;
-				break;
-	default:    std::fprintf(stderr, "%s: '%c': invalid byte sex\n", sav, val);
-				std::exit(1);
+	case 'b':
+		if (directory)
+			f = val;
+		else if (data)
+			d = val;
+		else
+			k = val;
+		break;
+	default:
+		std::fprintf(stderr, "%s: '%c': invalid byte sex\n", sav, val);
+		std::exit(1);
 	}
 }
 
-/* Guess the sex of the kernel from the file of data, NOTE: this API
- * as a side effect outputs a message saying which endianness has
- * been selected, call it only once...
+/* Guess the sex of the kernel from the file of data.
  */
-char guess_sex(const char *kernel) {
-		std::ifstream kfile(kernel, std::ios::in | std::ios::binary);
-		if (!kfile.good()) {
-			std::fprintf(stderr, "%s: failed to open kernel file\n", kernel);
-			std::exit(1);
-		}
-		/* Read the first four bytes */
-		char b1, b2, b3, b4;
-		kfile >> b1 >> b2 >> b3 >> b4;
-		if (!kfile.good()) {
-			std::fprintf(stderr, "%s: failed to read kernel file\n", kernel);
-			std::exit(1);
-		}
-		/* The first word of the kernel must be an instruction which is
-		 * unconditionally executed (because the setting of the condition
-		 * codes is not likely to be reliable - it depends on the boot loader).
-		 * So check for an AL instruction condition.
-		 */
-		const bool big((b1 & 0xf0) == 0xe0);
-		const bool little((b4 & 0xf0) == 0xe0);
-		if (big == little) {
-			/* This is the unexpected ambiguous case */
-			printf("WARNING: kernel assumed to be big endian, use '-e l' to override\n");
-			return 'b';
-		}
-		if (little) {
-			printf("[little-endian kernel]\n");
-			return 'l';
-		}
-		printf("[big-endian kernel]\n");
-		return 'b';
+void guess_sex(const char *kernel, char &kernel_sex, int &machine_type, bool &is_le_kernel) {
+	std::ifstream kfile(kernel, std::ios::in | std::ios::binary);
+	if (!kfile.good()) {
+		std::fprintf(stderr, "%s: failed to open kernel file\n", kernel);
+		std::exit(1);
+	}
+	/* Read the first four bytes */
+	char b1, b2, b3, b4;
+	kfile >> b1 >> b2 >> b3 >> b4;
+	if (!kfile.good()) {
+		std::fprintf(stderr, "%s: failed to read kernel file\n", kernel);
+		std::exit(1);
+	}
+	/* The first word of the kernel must be an instruction which is
+	 * unconditionally executed (because the setting of the condition
+	 * codes is not likely to be reliable - it depends on the boot loader).
+	 * So check for an AL instruction condition.
+	 */
+	const bool big((b1 & 0xf0) == 0xe0);
+	const bool little((b4 & 0xf0) == 0xe0);
+	if (big == little) {
+		/* This is the unexpected ambiguous case */
+		fprintf(stderr, "WARNING: kernel assumed to be big endian, use '-e l' to override\n");
+		kernel_sex = 'b';
+	} else if (little)
+		kernel_sex = 'l';
+	else
+		kernel_sex = 'b';
 }
 
 int main(int argc, char **argv) {
@@ -333,6 +344,7 @@ int main(int argc, char **argv) {
 	bool                got_kernel(false);    /* Either kernel or full image specified */
 	char                kernel_sex(0);        /* Byte sex of kernel */
 	char                data_sex('b');        /* Byte sex of data */
+	char                directory_sex('b');   /* Byte sex of FIS directory entries */
 	const char*         device = "eth0";      /* Hardware device to use */
 	const char*         target = "broadcast"; /* User specified target name */
 	const unsigned char*mac = 0;              /* Ethernet address to upgrade. */
@@ -373,8 +385,8 @@ int main(int argc, char **argv) {
 { "ram-payload:              payload (replaces ramdisk)",       required_argument, 0, 'R' },
 { "rootfs:                   jffs2 (flash) rootfs",             required_argument, 0, 'j' },
 { "payload:                  FIS directory payload",            required_argument, 0, 'p' },
-{ "endian[,b]:               kernel and data endianness;\n"
-  "                          [<kernel-byte-sex>],<data-byte-sex>\n"
+{ "endian[,b,b]:             kernel and data endianness;\n"
+  "                          [<kernel>],<data>[,<directory>]\n"
   "                          l: little endian\n"
   "                          p: pdp endian\n"
   "                          b: big endian\n",                  required_argument, 0, 'e' },
@@ -394,7 +406,7 @@ int main(int argc, char **argv) {
 	case ':':
 	case '?': std::exit(1);
 	case 'h': help(options); std::exit(1);
-	case 'e': parse_bytesex(kernel_sex, data_sex, optarg); break;
+	case 'e': parse_bytesex(kernel_sex, data_sex, directory_sex, optarg); break;
 	case 'd': device = optarg; break;
 	case 't': target = optarg; parse_mac(macBuffer, target); mac = macBuffer; break;
 	case 'f': from = optarg; parse_mac(fromMacBuffer, from); fromMac = fromMacBuffer; break;
@@ -421,10 +433,17 @@ done:
 	}
 
 	/* Fill in the kernel byte sex if required (only required when programming
-	 * an image in parts.)
+	 * an image in parts.)  Note that this doesn't identify an LE kernel,
+	 * rather it identifies how the kernel is encoded - big endian words or
+	 * little endian.
 	 */
-	if (kernel != 0 && kernel_sex == 0)
-		kernel_sex = guess_sex(kernel);
+	if (kernel != 0) {
+		int  machine(-1);
+		char k(0);
+		bool little(false);
+		guess_sex(kernel, k, machine, little);
+		if (kernel_sex == 0) kernel_sex = k;
+	}
 
 	try {
 		/* If not given a kernel upgrade is not possible (something must be written
@@ -498,7 +517,7 @@ done:
 				 */
 				Pointer<NSLU2Image::Image> image(
 						NSLU2Image::Image::MakeImage(
-							kernel_sex, data_sex,
+							kernel_sex, data_sex, directory_sex,
 							kernel,
 							ram_payload != 0, /* noramdisk */
 							ram_payload ? ram_payload : ram_disk,
