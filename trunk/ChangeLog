@@ -9,3 +9,4 @@ upslug2_8    More byte swapping support
 upslug2_9    Mac support, change pcap_wire to use getifaddrs
              Better target handling (-t)
              Auto-recognition of kernel byte sex and better byte sex options
+upslug2_10   Mac support, change to use pcap_inject
