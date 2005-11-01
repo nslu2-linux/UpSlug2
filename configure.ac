@@ -2,10 +2,10 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_INIT(upslug2, 9, http://sourceforge.net/projects/nslu/)
+AC_INIT(upslug2, 10, http://sourceforge.net/projects/nslu/)
 AM_INIT_AUTOMAKE(1.9)
 AC_CONFIG_SRCDIR([config.h.in])
-AC_CONFIG_HEADERS([config.h])
+AM_CONFIG_HEADER([config.h])
 
 # Checks system specific stuff
 AC_CANONICAL_HOST
@@ -58,7 +58,7 @@ AC_TYPE_UID_T
 AC_PROG_GCC_TRADITIONAL
 AC_FUNC_MEMCMP
 AC_FUNC_SELECT_ARGTYPES
-AC_CHECK_FUNCS([memset select socket strerror strtoul getifaddrs])
+AC_CHECK_FUNCS([memset select socket strerror strtoul getifaddrs pcap_inject])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

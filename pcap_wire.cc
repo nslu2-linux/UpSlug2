@@ -108,7 +108,11 @@ namespace NSLU2Upgrade {
 				 * pcap_inject which does the same thing, WinPcap supports
 				 * pcap_sendpacket, which also does the same thing.
 				 */
-				const ssize_t written(write(file, data, len));
+#				if HAVE_PCAP_INJECT
+					const ssize_t written(pcap_inject(pcap, data, len));
+#				else
+					const ssize_t written(write(file, data, len));
+#				endif
 				if (written < 0) {
 					if (errno != EINTR)
 						throw SendError(errno);
