@@ -29,8 +29,12 @@ AC_ARG_WITH(libpcap,
 [case "$with_libpcap" in
   yes)
     AC_CHECK_HEADER(pcap.h,[
-      AC_CHECK_LIB(pcap, pcap_open_live,
-      [have_libpcap=yes ])])
+      AC_CHECK_LIB(pcap, pcap_open_live, [
+      have_libpcap=yes
+      AC_CHECK_LIB(pcap, pcap_inject, [
+      	AC_DEFINE(HAVE_PCAP_INJECT, 1, [pcap_inject function is in libpcap])
+	])
+      ])])
     ;;
  esac])
 
@@ -58,7 +62,7 @@ AC_TYPE_UID_T
 AC_PROG_GCC_TRADITIONAL
 AC_FUNC_MEMCMP
 AC_FUNC_SELECT_ARGTYPES
-AC_CHECK_FUNCS([memset select socket strerror strtoul getifaddrs pcap_inject])
+AC_CHECK_FUNCS([memset select socket strerror strtoul getifaddrs])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
