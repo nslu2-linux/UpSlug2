@@ -1,0 +1,22 @@
+Starting with version 10 upslug2 is compatible with Mac OSX.
+
+Upslug2 requires libpcap version 0.9.3 or greater to work on OSX. By default,
+libpcap is included in OSX but it doesn't support all needed functions. So you
+will need to install a more recent version of libpcap. Fortunately the library
+is available through DarwinPorts (http://www.darwinports.org). Maybe it is also
+available from Fink (http://fink.sourceforge.net) but that has not been tested.
+
+If you don't have DarwinPorts installed, go to the website and learn how to
+use it. Just make sure you also install libpcap.
+
+Now you are ready to build upslug2:
+
+By default, DarwinPorts will be installed in /opt. If you have it installed
+in another location you have to adjust the path's below.
+
+CPPFLAGS=-I/opt/local/include LDFLAGS=-L/opt/local/lib ./configure --with-libpcap
+make
+make install
+
+Using upslug2 requires root access since the bpf-device(s) on OSX are
+configured for read-only access for all other users.
