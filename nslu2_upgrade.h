@@ -37,6 +37,7 @@ namespace NSLU2Upgrade {
 	class ReceiveError : public OSError {
 	public:
 		inline ReceiveError(int err) : OSError(err) { }
+		inline ReceiveError(int err, const char *what) : OSError(err, what) { }
 	};
 
 	class WireError : public OSError {
