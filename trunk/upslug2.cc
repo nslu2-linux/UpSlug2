@@ -21,7 +21,7 @@ class ProgressBar : public UpSlug2::CharacterProgressBar<80> {
 public:
 	ProgressBar(bool reprogram, const unsigned char *t) :
 		UpSlug2::CharacterProgressBar<80>(reprogram, 64),
-		target(t), displayed(false) {
+		target(t), displayed(false), ticker(0) {
 	}
 
 	virtual ~ProgressBar() {
@@ -61,28 +61,51 @@ public:
 
 private:
 	void UpdateDisplay(const char *display, int firstChanged, int lastChanged) {
-		/* Initially the seen and sent addresses are set to 0xffffffff,
-		 * handle this here.
-		 */
-		int seen(AddressOfLastSeen());
-		int sent(AddressOfLastSent());
-		if (sent == -1)
-			seen = sent = 0;
-		else if (seen == -1) {
+		bool erase(false);
+		const char echar(Indicator(UpSlug2::ProgressBar::Erase));
+		for (int i=0; i<64; ++i) if (display[i] == echar) {
+			erase = true;
+			break;
+		}
+
+		if (erase) {
 			/* sent something but not received anything yet, skip the
 			 * RedBoot and SysConf stuff unless reprogramming.
 			 */
-			seen = 0;
-			if (!reprogram)
-				sent -= NSLU2Protocol::BaseAddress;
-		} else
-			sent -= seen;
+			int ticktock(++ticker % 11);
+			if (ticktock > 5)
+				ticktock = 10-ticktock;
+
+			std::fprintf(stderr,  "\rerasing   %c%c%c   %s", "   <<("[ticktock],
+				" .o.oo"[ticktock], "   >>)"[ticktock], display);
+
+			/* Force a callback on the next timeout. */
+			retransmit = timeout = false;
+		} else {
+			/* Initially the seen and sent addresses are set to 0xffffffff,
+			 * handle this here.
+			 */
+			int seen(AddressOfLastSeen());
+			int sent(AddressOfLastSent());
+
+			if (sent == -1)
+				seen = sent = 0;
+			else if (seen == -1) {
+				seen = 0;
+				if (!reprogram)
+					sent -= NSLU2Protocol::BaseAddress;
+			} else
+				sent -= seen;
+
+			std::fprintf(stderr, "\r%c %6x+%6.6x %s",
+				timeout ? '*' : (retransmit ? '+' : ' '), seen, sent, display);
+		}
+
 		displayed = true;
-		std::fprintf(stderr, "\r%c %6x+%6.6x %s",
-			timeout ? '*' : (retransmit ? '+' : ' '), seen, sent, display);
 		std::fflush(stderr);
 	}
 
+	int                  ticker;
 	bool                 displayed;
 	const unsigned char *target;
 };
@@ -277,9 +300,10 @@ void parse_bytesex(char &k, char &d, char &f, const char *arg) {
 		directory = data;
 		data = !data;
 		break;
-	case 'p':  /* only valid for data */
-		if (!data) {
-			std::fprintf(stderr, "%s: PDP byte sex only valid for data\n", sav);
+	case 'p':  /* only valid for data or directory */
+		if (!data && !directory) {
+			std::fprintf(stderr,
+				"%s: PDP byte sex only valid for data or directory\n", sav);
 			std::exit(1);
 		}
 		/* fall through */

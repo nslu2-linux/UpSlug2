@@ -12,13 +12,12 @@
 
 #include <sys/types.h>  /* Required for class EUID */
 
-#if BROKEN_PCAP_TIMEOUT || HAVE_GETIFADDRS
+#if HAVE_GETIFADDRS
 #	include <sys/socket.h>
 #endif
 
-#if BROKEN_PCAP_TIMEOUT
-#	include <sys/select.h>
-#endif
+#include <sys/time.h>
+#include <sys/select.h>
 
 /* Ways of finding the hardware MAC on this machine... */
 /* This is the Linux only fallback. */
@@ -126,6 +125,43 @@ namespace NSLU2Upgrade {
 			} while (len > 0);
 		}
 
+		/* This is a pcap_handler implementation, the static callback passed
+		 * to pcap_dispatch derives the original 'this' pointer and calls the
+		 * non-static (real) Handler.
+		 */
+		void Handler(const struct pcap_pkthdr *packet_header, const u_char *packet) {
+			/* This should only be called once... */
+			if (captured)
+				throw std::logic_error("Handler called twice");
+
+			/* Verify the protocol and originating address of the packet, then
+			 * return this packet.
+			 */
+			if (packet_header->caplen > 14 && (broadcast ||
+				std::memcmp(packet+6, header, 6) == 0)) {
+				/* Record the address and copy the data */
+				std::memcpy(source, packet+6, 6);
+				const size_t len(packet_header->caplen - 14);
+				if (len > captureSize)
+					throw std::logic_error("packet too long");
+				std::memcpy(captureBuffer, packet+14, len);
+				captureSize = len;
+				captured = true;
+			}
+		}
+
+		static void PCapHandler(u_char *user, const struct pcap_pkthdr *packet_header,
+				const u_char *packet) {
+			/* The following should never happen because this is an ethernet
+			 * packet and the buffer should be big enough.
+			 */
+			if (packet_header->caplen < packet_header->len)
+				throw std::logic_error("truncated packet");
+
+			/*IGNORE EVIL: known evil cast */
+			reinterpret_cast<PCapWire*>(user)->Handler(packet_header, packet);
+		}
+
 		/* Receive throws ReceiveError on a fatal error and must update
 		 * size with the received packet size.  0 must be used to
 		 * indicate failure to receive a packet (and this must not
@@ -135,103 +171,66 @@ namespace NSLU2Upgrade {
 		 * of 0 must be returned).
 		 */
 		virtual void Receive(void *buffer, size_t &size, unsigned long timeout) {
-			{
-				char errbuf[PCAP_ERRBUF_SIZE];
-
-				/* The pcap is set to a 0.25s timeout - 1<<18, so to
-				 * implement longer timeouts decrement the count each
-				 * time.  If the timeout is zero set the pcap to
-				 * non-blocking temporarily, ignore an error in this.
-				 *
-				 * On linux the timeout is broken, so we do things
-				 * a different way and always set the interface non-blocking.
-				 */
-				(void)pcap_setnonblock(pcap,
-#							if BROKEN_PCAP_TIMEOUT
-						       		true,
-#							else
-								timeout == 0,
-#							endif
-							errbuf);
-			}
-
 			/* Now try to read packets until the timeout has been consumed.
 			 */
+			struct timeval tvStart;
+			if (timeout > 0 && gettimeofday(&tvStart, 0) != 0)
+				throw OSError(errno, "gettimeofday(base)");
+
+			captureBuffer = buffer;
+			captureSize = size;
+			captured = false;
 			do {
-#				if BROKEN_PCAP_TIMEOUT
-					/* This only works on selected operating systems,
-					 * the BSDs do not handle select on a socket, but
-					 * they do implement the timeout.
-					 */
-					fd_set readfds;
-					FD_ZERO(&readfds);
-					FD_SET(file, &readfds);
-				
-					/* Timeout as requested by the caller. */
-					struct timeval tv;
-					tv.tv_sec = timeout >> 20;
-					tv.tv_usec = timeout & 0xfffff;
-					if (tv.tv_usec >= 1000000)
-						++tv.tv_sec, tv.tv_usec = 0;
+				/*IGNORE EVIL: known evil cast */
+				int count(pcap_dispatch(pcap, 1, PCapHandler,
+							reinterpret_cast<u_char*>(this)));
 
-					/* See if there is anything to read... */
-					do {
-						int fds(select(file+1, &readfds, 0, 0, &tv));
-						if (fds == 0) {
-							size = 0;
-							return;
-						}
-						if (fds != (-1))
-							break;
-						if (errno != EINTR)
-							throw ReceiveError(errno);
-					} while (1);
-
-					/* Now there is something to read, so the
-					 * pcap_next will not block.
-					 */
-#				endif
-
-				const u_char*       packet;
-				struct pcap_pkthdr* packet_header;
-				switch(pcap_next_ex(pcap, &packet_header, &packet)) {
-				case 1:  /* packet read ok */
-					/* The following should never happen because
-					 * this is an ethernet packet and the buffer
-					 * should be big enough.
-					 */
-					if (packet_header->caplen < packet_header->len)
-						throw std::logic_error("truncated packet");
-
-					/* Verify the protocol and originating address of
-					 * the packet, then return this packet.
-					 */
-					if (packet_header->caplen > 14 && (broadcast ||
-						std::memcmp(packet+6, header, 6) == 0)) {
-						/* Record the address and copy the data */
-						std::memcpy(source, packet+6, 6);
-						size_t len(packet_header->caplen - 14);
-						if (len > size)
-							throw std::logic_error("packet too long");
-						std::memcpy(buffer, packet+14, len);
-						size = len;
+				if (count > 0) {
+					/* Were any packets handled? */
+					if (captured) {
+						size = captureSize;
 						return;
 					}
-					break;
-				case 0:  /* timeout */
-					if (timeout > 1<<18)
-						timeout -= 1<<18;
-					else
-						timeout = 0;
-					break;
-				case -1: /* IO error */
-					if (errno != EINTR)
-						throw ReceiveError(errno);
-					/* else try again */
-					break;
-				case -2: /* unexpected (savefile) */
-				default:
-					throw std::logic_error("pcap unexpected result");
+					/* else try again. */
+				} else if (count == 0) {
+					/* Nothing to handle - do the timeout, do this
+					 * by waiting a bit then trying again, the trick
+					 * to this is to work out how long to wait each
+					 * time, for the moment a 10ms delay is used.
+					 */
+					if (timeout == 0)
+						break;
+
+					struct timeval tvNow;
+					if (gettimeofday(&tvNow, 0) != 0)
+						throw OSError(errno, "gettimeofday(now)");
+
+					unsigned long t(tvNow.tv_sec - tvStart.tv_sec);
+					t *= 1000000;
+					t += tvNow.tv_usec;
+					t -= tvStart.tv_usec;
+					if (t > timeout)
+						break;
+
+					tvNow.tv_sec = 0;
+					tvNow.tv_usec = timeout-t;
+					if (tvNow.tv_usec > 10000)
+						tvNow.tv_usec = 10000;
+
+					/* Delay, may be interrupted - this should
+					 * be portable to the BSDs (since the
+					 * technique originates in BSD.)
+					 */
+					(void)select(0, 0, 0, 0, &tvNow);
+				} else {
+					/* Error condition. */
+					if (count == -1) {
+						if (errno != EINTR)
+							throw ReceiveError(errno,
+									pcap_geterr(pcap));
+						/* else try again */
+					} else
+						throw std::logic_error("pcap unexpected result");
 				}
 			} while (timeout != 0);
 
@@ -249,11 +248,14 @@ namespace NSLU2Upgrade {
 		}
 
 	private:
+		void*   captureBuffer; /* Buffer to be filled in by Handler */
+		size_t  captureSize;   /* Filled in by Handler - bytes in buffer */
 		pcap_t* pcap;
-		int     file;       /* pcap file descriptor */
-		char    header[14]; /* Packet header. */
-		char    source[6];  /* Source of last *received* packet. */
+		int     file;           /* pcap file descriptor */
+		char    header[14];     /* Packet header. */
+		char    source[6];      /* Source of last *received* packet. */
 		bool    broadcast;
+		bool    captured;       /* Whether Handler was called */
 	};
 
 	/* Class to set and reset the user id to the effective uid. */
@@ -284,6 +286,9 @@ namespace NSLU2Upgrade {
  */
 NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
 		const unsigned char *mac, const unsigned char *address, int uid) {
+	/* This is used to store the error passed to throw. */
+	static char PCapErrbuf[PCAP_ERRBUF_SIZE];
+
 	/* Check the device name.  If not given use 'eth0'. */
 	if (device == NULL)
 		device = "eth0";
@@ -291,17 +296,24 @@ NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
 	pcap_t *pcap = NULL;
 	{
 		EUID euid(uid);
-		char errbuf[PCAP_ERRBUF_SIZE];
 		/* Do *NOT* set promiscuous here - all manner of strangeness
 		 * will result because the interfaces will capture packets destined
 		 * for other ethernet MACs.  (Because the code above does not
 		 * check that the destination matches the device in use).
 		 */
-		pcap = pcap_open_live(device, 1540, false/*promiscuous*/, 250/*ms*/, errbuf);
+		pcap = pcap_open_live(device, 1540, false/*promiscuous*/, 1/*ms*/, PCapErrbuf);
 
 		if (pcap == NULL)
-			throw WireError(errno);
+			throw WireError(errno, PCapErrbuf);
 	}
+
+	/* Always do a non-blocking read, because the 'timeout' above
+	 * doesn't work on Linux (return is immediate) and on OSX (and
+	 * maybe other BSDs) the interface tends to hang waiting for
+	 * the timeout to expire even after receiving a single packet.
+	 */
+	if (pcap_setnonblock(pcap, true, PCapErrbuf))
+		throw WireError(errno, PCapErrbuf);
 
 	try {
 		/* The MAC of the transmitting device is needed - without

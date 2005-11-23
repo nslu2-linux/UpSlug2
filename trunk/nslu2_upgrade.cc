@@ -37,10 +37,10 @@ namespace NSLU2Upgrade {
 			do {
 				NSLU2Protocol::ReceivePacket receive;
 				size_t size = receive.PacketBufferSize();
-				/* Wait up to 0.25s for a new packet (this is somewhat
+				/* Wait up to 1/16s for a new packet (this is somewhat
 				 * arbitrary).
 				 */
-				wire->Receive(receive.PacketWriteBuffer(), size, 1<<18);
+				wire->Receive(receive.PacketWriteBuffer(), size, 1<<16);
 
 				/* Non-fatal - no packet received. */
 				if (size == 0)
@@ -343,7 +343,7 @@ void NSLU2Upgrade::RealDoUpgrade::Send(NSLU2Protocol::Type type, int address,
 	 */
 	ReceiveAndRetransmit(type, 0); /* no timeout - poll */
 	if (seq.LastSent() >= NSLU2Protocol::MaxPendingPackets + seq.LastSeen()) {
-		ReceiveAndRetransmit(type, 1<<18); /* block for up to 0.25s */
+		ReceiveAndRetransmit(type, 1<<16); /* block for up to 1/16s */
 		/* If no advance has been made - no slot is available - retransmit
 		 * the last packet to provoke a retransmit error if packets have
 		 * been dropped.
@@ -352,7 +352,7 @@ void NSLU2Upgrade::RealDoUpgrade::Send(NSLU2Protocol::Type type, int address,
 			if (progress)
 				progress->Timeout(type, seq.LastSeen()+1);
 			Transmit(seq.LastSent());
-			ReceiveAndRetransmit(type, 1<<20); /* block for 1s now */
+			ReceiveAndRetransmit(type, 1<<17); /* block for 0.125s now */
 		}
 	}
 
@@ -505,7 +505,7 @@ void NSLU2Upgrade::RealDoUpgrade::Finish(void) {
 	const int lastSent(seq.LastSent());
 	int lastSeen(seq.LastSeen());
 	while (lastSent > lastSeen) {
-		ReceiveAndRetransmit(lastType, 1<<18); /* 0.25s to block */
+		ReceiveAndRetransmit(lastType, 1<<16); /* 1/16s to block */
 		const int seen(seq.LastSeen());
 		if (seen == lastSeen) { /* no progress */
 			if (progress)
@@ -529,6 +529,6 @@ void NSLU2Upgrade::RealDoUpgrade::Reboot(void) {
 		}
 
 		/* Ensure that the packet is received. */
-		Receive(1<<20); /* 1s timeout. */
+		Receive(1<<18); /* 0.25s timeout. */
 	} while (seq.LastSeen() < sequence);
 }

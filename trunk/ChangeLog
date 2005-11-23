@@ -7,6 +7,11 @@ upslug2_7    Added LE 2-byte swap and corrected LE support
 upslug2_8    More byte swapping support
 
 upslug2_9    Mac support, change pcap_wire to use getifaddrs
-             Better target handling (-t)
-             Auto-recognition of kernel byte sex and better byte sex options
+	     Better target handling (-t)
+	     Auto-recognition of kernel byte sex and better byte sex options
 upslug2_10   Mac support, change to use pcap_inject
+upslug2_11   Included macosx README
+	     Allow PDP-endian FIS directory
+	     Modifications to libpcap handling to make it work on Linux and
+	     MAC OSX
+	     Display 'erase' in progress bar (not timeout)

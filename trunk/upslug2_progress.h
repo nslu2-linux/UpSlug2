@@ -98,13 +98,17 @@ namespace UpSlug2 {
 
 		/* Timeout is called when a receive timeout occurs.  Nothing is
 		 * implemented for this class.
+
+		 virtual inline void Timeout(NSLU2Protocol::Type type, int sequence);
+
 		 */
-		// virtual inline void Timeout(NSLU2Protocol::Type type, int sequence);
 
 		/* Retransmit is called when a packet must be retransmitted, the
 		 * sequence number is that of the first packet to be retransmitted.
+
+		 virtual inline void Retransmit(NSLU2Protocol::Type type, int sequence);
+
 		 */
-		//virtual inline void Retransmit(NSLU2Protocol::Type type, int sequence);
 
 		/* Received is called after a packet is received and it is passed
 		 * the highest sequence number received (not necessarily that of
