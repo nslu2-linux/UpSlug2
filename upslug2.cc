@@ -182,7 +182,7 @@ void Reboot(NSLU2Upgrade::DoUpgrade *upgrade, bool no_reboot) {
 }
 
 void help(struct option *options) {
-	std::fprintf(stderr, "upslug2: usage: upslug2 {options}\n options:\n");
+	std::fprintf(stderr, "Usage: upslug2 {options}\n options:\n");
 	while (options->name) {
 		std::fprintf(stderr, "  -%c --%s\n", options->val, options->name);
 		++options;
@@ -190,13 +190,13 @@ void help(struct option *options) {
 	std::fprintf(stderr, "\n"
 " Specify --target to upgrade an NSLU2 (or to verify a previous upgrade)\n"
 " without no arguments upslug2 will list the NSLU2 machines which are currently\n"
-" in upgrade mode (and do nothing else).  Without --targeet upslug2 will only\n"
+" in upgrade mode (and do nothing else).  Without --target upslug2 will only\n"
 " perform an upgrade if there is just one NSLU2 in upgrade mode.\n"
 "\n"
 " Specify --image=<file> if a complete NSLU2 flash image is available, if\n"
 " --Complete-reprogram is specified the whole flash image will be overwritten\n"
 " (the NSLU2 may become permanently unuseable if this is done), otherwise the\n"
-" RedBoot boot loader and currently 'SysConf' configuration is not changed.\n"
+" RedBoot boot loader and the current 'SysConf' configuration is not changed.\n"
 "\n"
 " Alternatively specify --kernel and --rootfs to build the image which will be\n"
 " used to upgrade the NSLU2.  In this case --product-id, --protocol-id and\n"
