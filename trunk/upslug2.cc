@@ -38,7 +38,7 @@ public:
 			"  Display:\n"
 			"    <status> <address completed>+<bytes transmitted but not completed>\n"
 			"  Status:\n"
-			"    * timeout occured          + sequence error detected\n\n",
+			"    * timeout occurred         + sequence error detected\n\n",
 			target[3], target[4], target[5],
 			target[0], target[1], target[2], target[3], target[4], target[5],
 			Indicator(UpSlug2::ProgressBar::Init),
