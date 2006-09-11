@@ -194,9 +194,9 @@ NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
 		if (packet_socket == (-1))
 			throw WireError(errno);
 
-		/* Check the device name.  If not given use 'eth0'. */
+		/* Check the device name.  If not given use 'DEFAULT_ETHERNET_IF'. */
 		if (device == NULL)
-			device = "eth0";
+			device = DEFAULT_ETHERNET_IF;
 
 		/* We are using a level which requires a hardware specific address,
 		 * that's because the NSLU2 doesn't (for reasons which are far from

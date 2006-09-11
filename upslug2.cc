@@ -3,6 +3,8 @@
  *
  * The upslug2 main program for the command line implementation.
  */
+#include "config.h"
+
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -369,7 +371,7 @@ int main(int argc, char **argv) {
 	char                kernel_sex(0);        /* Byte sex of kernel */
 	char                data_sex('b');        /* Byte sex of data */
 	char                directory_sex('b');   /* Byte sex of FIS directory entries */
-	const char*         device = "eth0";      /* Hardware device to use */
+	const char*         device = DEFAULT_ETHERNET_IF;      /* Hardware device to use */
 	const char*         target = "broadcast"; /* User specified target name */
 	const unsigned char*mac = 0;              /* Ethernet address to upgrade. */
 	unsigned char       macBuffer[6];         /* To store the command line address */
@@ -396,7 +398,7 @@ int main(int argc, char **argv) {
 	/* The list of options, I combine the help text with the option name. */
 	struct option options[] = {
 { "help:                     output this help message",         no_argument,       0, 'h' },
-{ "device[eth0]:             local ethernet device to use",     required_argument, 0, 'd' },
+{ "device[" DEFAULT_ETHERNET_IF "]:             local ethernet device to use",     required_argument, 0, 'd' },
 { "target:                   NSLU2 to upgrade (MAC address)",   required_argument, 0, 't' },
 { "from:                     MAC of host (this machine)",       required_argument, 0, 'f' },
 { "verify:                   verify only (do not write flash)", no_argument,       0, 'v' },
