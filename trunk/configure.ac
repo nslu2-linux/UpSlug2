@@ -12,6 +12,10 @@ AC_CANONICAL_HOST
 case "$host" in
   *-linux*)
     AC_DEFINE(BROKEN_PCAP_TIMEOUT, 1, [Define if pcap_open_live timeout does not work])
+    AC_DEFINE(DEFAULT_ETHERNET_IF, "eth0", [Define default ethernet interface])
+    ;;
+  *-darwin*)
+    AC_DEFINE(DEFAULT_ETHERNET_IF, "en0", [Define default ethernet interface])
     ;;
 esac
 

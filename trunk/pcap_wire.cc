@@ -289,9 +289,9 @@ NSLU2Upgrade::Wire *NSLU2Upgrade::Wire::MakeWire(const char *device,
 	/* This is used to store the error passed to throw. */
 	static char PCapErrbuf[PCAP_ERRBUF_SIZE];
 
-	/* Check the device name.  If not given use 'eth0'. */
+	/* Check the device name.  If not given use 'DEFAULT_ETHERNET_IF'. */
 	if (device == NULL)
-		device = "eth0";
+		device = DEFAULT_ETHERNET_IF;
 
 	pcap_t *pcap = NULL;
 	{
