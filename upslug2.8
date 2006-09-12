@@ -1,0 +1,219 @@
+.\" $Id$
+.\"
+.\" Copyright (C) 2006  Martin Michlmayr <tbm@cyrius.com>
+.\"
+.\" Permission is hereby granted, free of charge, to any person
+.\" obtaining a copy of this software and associated documentation files
+.\" (the "Software"), to deal in the Software without restriction,
+.\" including without limitation the rights to use, copy, modify,
+.\" merge, publish, distribute, sublicense, and/or sell copies of the
+.\" Software, and to permit persons to whom the Software is furnished
+.\" to do so, subject to the following conditions:
+.\"
+.\" The above copyright notice and this permission notice shall be
+.\" included in all copies or substantial portions of the Software.
+.\"
+
+.TH UPSLUG2 8 "January 2006"
+.SH NAME
+upslug2 \- utility to upgrade the firmware of a NSLU2 via the network
+
+
+.SH SYNOPSIS
+.B upslug2
+[options]
+
+
+.SH DESCRIPTION
+
+.B upslug2
+is a command line program intended to allow the upgrade the firmware of a
+LinkSys NSLU2 (Network Storage Link for USB 2.0 Disk Drives) to new or
+different versions.  When a NSLU2 in the local network is put in upgrade
+mode,
+.B upslug2
+can connect to it and upload a new firmware.
+
+.B upslug2
+will accept a full firmware image but it can also upgrade the
+flash from individual files holding the kernel, ramdisk and root
+filesystem.
+.B upslug2
+provides status information during the upgrade process and verifies the
+written image after the upgrade.
+
+
+.SH OPTIONS
+
+.TP
+\fB\-C\fR, \fB\-\-Complete\-reprogram\fR
+Reprogram the complete flash, including the RedBoot boot loader and the
+SysConf partition holding configuration information.  Using this option
+may result in the NSLU2 becoming permanently unusable!  By default,
+.B upslug2
+will not touch these two partitions since this allows flashing a new
+firmware if an uploaded firmware does not work.  This is not possible if
+RedBoot itself is damaged.  Use with caution.
+
+.TP
+\fB\-d\fR, \fB\-\-device\fR
+The network device on the host machine connected to the network on which
+the NSLU2 is located. (Default: eth0).
+
+.TP
+\fB\-e\fR, \fB\-\-endian\fR
+The endianness of the files to be uploaded.
+.B upslug2
+will usually detected the endianness automatically but this option can be
+used to force byte swapping to occur.  This option accepts three values,
+separated by comma: endianness of kernel, data and RedBoot FIS directory.
+Valid values are \fBl\fR (little endian), \fBp\fR (pdp endian) and \fBb\fR
+(big endian). (Default: ,b,b)
+
+.TP
+\fB\-f\fR, \fB\-\-from\fR
+The MAC address of the host system.
+
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Show summary of options.
+
+.TP
+\fB\-i\fR, \fB\-\-image\fR
+The complete flash image to use.
+
+.TP
+\fB\-j\fR, \fB\-\-rootfs\fR
+A root filesystem, usually of type jffs.
+
+.TP
+\fB\-k\fR, \fB\-\-kernel\fR
+A compressed kernel zImage image.
+
+.TP
+\fB\-n\fR, \fB\-\-no\-reboot\fR
+Do not reboot after upgrade
+
+.TP
+\fB\-p\fR, \fB\-\-payload\fR
+FIS directory payload.  There are about 140 Kb in the last block (between
+the FIS dir and the trailer at the end) which can be used for data.
+
+.TP
+\fB\-r\fR, \fB\-\-ramdisk\fR
+A compressed ramdisk image.
+
+.TP
+\fB\-R\fR, \fB\-\-ram\-payload\fR
+A ram paylod (replaced ramdisk).
+(FIXME: if it replaced the ramdisk, why cannot you just use the -r option?
+What's the difference)
+
+.TP
+\fB\-t\fR, \fB\-\-target\fR
+The MAC address of the NSLU2 to upgrade.  Without this option,
+.B upslug2
+will only perform an upgrade if there is just one NSLU2 in upgrade mode.
+
+.TP
+\fB\-U\fR, \fB\-\-no\-verify\fR
+Do not verify the image, only upgrade.
+
+.TP
+\fB\-v\fR, \fB\-\-verify\fR
+Do not write to flash, only verify the image.
+
+
+.SS Options to specify firmware information
+
+The following options should be used when individual kernel, ramdisk and
+root filesystem files are specified rather than a complete firmware image.
+
+.TP
+\fB\-E\fR, \fB\-\-extra\-version\fR
+Extra version information, a 2 byte value. (Default: 0x90f7)
+
+.TP
+\fB\-F\fR, \fB\-\-firmware\-version\fR
+The firmware version, a 2 byte value. (Default: 0x2329)
+
+.TP
+\fB\-P\fR, \fB\-\-product\-id\fR
+The product ID, a 2 byte value. (Default: 1)
+
+.TP
+\fB\-T\fR, \fB\-\-protocol\-id\fR
+The protocol ID, a 2 byte value. (Default: 0)
+
+
+.SH USING UPSLUG2
+
+In order to use
+.B upslug2
+the NSLU2 which is to be upgraded has to be put in upgrade mode:
+
+1. Disconnect any disks and/or devices from the USB ports.
+
+2. Power off the NSLU2
+
+3. Press and hold the reset button (accessible through the small hole on
+the back just above the power input).
+
+4. Press and release the power button to power on the NSLU2.
+
+5. Wait for 10 seconds watching the ready/status LED. After 10 seconds it
+will change from amber to red. Immediately release the reset button.
+
+6. The NSLU2 ready/status LED will flash alternately red/green (there is a
+1 second delay before the first green). The NSLU2 is now in upgrade mode.
+
+If you decide not to flash the image the NSLU2 can be rebooted by
+disconnecting the power.  If the ready/status LED does not turn green after
+step four it will remain red for several seconds then flash amber. This
+happens if you do not release the reset button in time - pull the power,
+reconnect it and repeat from the second step.
+
+Once the NSLU2 is in upgrade mode it will remain in this state until either
+the power is connected or a new image has been flashed. If the flash fails
+the NSLU2 will (eventually) return to upgrade mode
+
+.SH EXAMPLES
+
+The most common use of
+.B upslug2
+is the following:
+.RS
+upslug2 \-\-image NSLU2_V23R63.bin
+.RE
+This specifies a complete firmware image which will be written to flash.
+
+Alternatively, kernel, ramdisk and root filesystem can be specified
+individually:
+.RS
+upslug2 \-k nslu2-zImage \-r ramdisk -\j root.jffs
+.RE
+In this case, the options \fB\-E\fR, \fB\-F\fR, \fB\-P\fR and \fB\-T\fR
+should typically be specified as well.
+
+By default,
+.B upslug2
+will search for the NSLU2 on the network on your eth0 network interface.
+If the network is on a different interface, you can easily specify it:
+.RS
+upslug2 \-d eth1 \-\-image NSLU2_V23R63.bin
+.RE
+
+If there are potentially more than one NSLU2 in your network which may be
+in upgrade mode, you can specify its MAC address:
+.RS
+upslug2 \-t 00:11:85:12:34:56 \-\-image NSLU2_V23R63.bin
+.RE
+
+.SH SEE ALSO
+.PP
+.BR slugimage (1)
+
+.SH AUTHOR
+.PP
+John Bowler <jbowler@acm.org>
+
