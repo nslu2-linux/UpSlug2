@@ -80,7 +80,7 @@ Show summary of options.
 
 .TP
 \fB\-i\fR, \fB\-\-image\fR
-The complete flash image to use.
+The flash image to use.
 
 .TP
 \fB\-j\fR, \fB\-\-rootfs\fR
@@ -127,7 +127,7 @@ Do not write to flash, only verify the image.
 .SS Options to specify firmware information
 
 The following options should be used when individual kernel, ramdisk and
-root filesystem files are specified rather than a complete firmware image.
+root filesystem files are specified rather than a firmware image.
 
 .TP
 \fB\-E\fR, \fB\-\-extra\-version\fR
@@ -185,7 +185,8 @@ is the following:
 .RS
 upslug2 \-\-image NSLU2_V23R63.bin
 .RE
-This specifies a complete firmware image which will be written to flash.
+This specifies a firmware image which will be written to flash (with
+the exception of the RedBoot and SysConf partitions).
 
 Alternatively, kernel, ramdisk and root filesystem can be specified
 individually:
