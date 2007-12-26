@@ -9,8 +9,10 @@
 
 namespace NSLU2Upgrade {
 	/* Hardware ID field, add others as required. */
-	static const unsigned char NSLU2ID0[32] = {
-		4, 112, 49, 149, 88, 16, /* remainder 0 */
+	static const unsigned char NSLU2ID0[][32] = {
+		{4, 112, 49, 149, 88, 16}, /* remainder 0 */
+		{0x44, 0x47, 0x38, 0x33, 0x34, 0x56, 0x33},  /* remainder 0 */
+		0
 	};
 
 	/* Real implementations. */
@@ -52,19 +54,26 @@ namespace NSLU2Upgrade {
 				 */
 				if (receive.TypeOf() == NSLU2Protocol::HardwareInfo &&
 					receive.Sequence() == sequence &&
-					receive.DataLength() == NSLU2Protocol::HardwareInfoLength &&
+					receive.DataLength() == NSLU2Protocol::HardwareInfoLength
 					/* Validate the non-variable parts of the hardware
 					 * info - this stuff is simply copied from the RedBoot
 					 * part of the image, however the data in question is
 					 * not actually from the RedBoot source/build - rather
 					 * it is inserted when the flash image is built.  This
 					 * code checks the 32 byte 'hardware id' for a match.
-					 */
-					memcmp(receive.Data()+4, NSLU2ID0, 32) == 0) {
+					 */) {
+					/* try all IDs */
+					int found = 0, i;
+					const unsigned char *d = receive.Data()+4+32+2;
+					for(i = 0; NSLU2ID0[i][0]; i++)
+						if(memcmp(receive.Data()+4, NSLU2ID0[i], 32) == 0)
+							found = 1;
+					if(found == 0)
+						continue;
+						
 					/* Copy out the ProductID, ProtocolID and
 					 * FirmwareVersion fields.
 					 */
-					const unsigned char *d = receive.Data()+4+32+2;
 					product_id       = (d[0]<<8) + d[1], d += 4;
 					protocol_id      = (d[0]<<8) + d[1], d += 4;
 					/* skip FunctionId */ d += 4;

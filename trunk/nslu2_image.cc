@@ -5,6 +5,7 @@
  */
 #include <stdexcept>
 #include <cstring>
+#include <iostream>
 #include <fstream>
 #include <cerrno>
 
@@ -27,8 +28,8 @@ namespace NSLU2Image {
 		}
 	}
 
-	void SafeSeek(std::ifstream *stream, int offset, const char *name) {
-		stream->seekg(offset, std::ios::beg);
+	void SafeSeek(std::ifstream *stream, int offset, const char *name, std::ios::seekdir dir = std::ios::beg) {
+		stream->seekg(offset, dir);
 		if (!stream->good())
 			throw NSLU2Image::FileError(SizeError, name, errno);
 	}
@@ -72,7 +73,7 @@ namespace NSLU2Image {
 		void Validate(const char *i) {
 			char signature[8];
 
-			SafeSeek(&image, NSLU2Protocol::FlashSize-8, i);
+			SafeSeek(&image, -8, i, std::ios::end);
 			SafeRead(&image, signature, 8, i);
 			if (memcmp(signature, "eRcOmM", 6) != 0)
 				throw NSLU2Image::FileError(DataError, i, 0);
